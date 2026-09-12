@@ -10,7 +10,7 @@ user's own message as a legitimate command, a crafted chat message gets it
 to recite the system prompt -- code included -- back to the attacker.
 
 In Nullock:
-    1. nullock scope add http://localhost:5059/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Through the Proxy, POST /chat {"message": "hi, what's my order status?"}
        -- an ordinary reply, no leak. Capture it.
     3. Open the captured request in Repeater and replace the message with an

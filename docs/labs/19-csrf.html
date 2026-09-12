@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Cross-Site Request Forgery (CSRF)</h1>
-  <p class="lead" style="margin-top:12px;">POST /change-email updates the account email with NO anti-CSRF token, and the session cookie has no SameSite attribute. Any malicious page the victim visits can auto-submit this form using the victim&#x27;s cookies. In Nullock: 1. nullock scope add http://localhost:5019/* 2. POST /login (any user), then use /change-email -- captured. 3. Note: no CSRF token in the request, and the session cookie has no SameSite attribute (the header audit flags the cookie). 4. A cross-site auto-submitting form to /change-email succeeds. 5. Confirm success: POST /flag (logged in first) with an Origin/ Referer header for a different site, e.g. https://evil.example -- simulating the forged cross-site form. Same no-token state change as /change-email; hands back the flag once it succeeds anyway. Fix: require a per-session CSRF token on state-changing requests, and set SameSite=Lax/Strict on the session cookie.</p>
+  <p class="lead" style="margin-top:12px;">POST /change-email updates the account email with NO anti-CSRF token, and the session cookie has no SameSite attribute. Any malicious page the victim visits can auto-submit this form using the victim&#x27;s cookies. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. POST /login (any user), then use /change-email -- captured. 3. Note: no CSRF token in the request, and the session cookie has no SameSite attribute (the header audit flags the cookie). 4. A cross-site auto-submitting form to /change-email succeeds. 5. Confirm success: POST /flag (logged in first) with an Origin/ Referer header for a different site, e.g. https://evil.example -- simulating the forged cross-site form. Same no-token state change as /change-email; hands back the flag once it succeeds anyway. Fix: require a per-session CSRF token on state-changing requests, and set SameSite=Lax/Strict on the session cookie.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/19-csrf/app.py
 # then open http://localhost:5019/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5019/*</code><code class="inline">http://127.0.0.1:5019/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5019</code><code class="inline">127.0.0.1:5019</code><p class="muted">Download <a href="19-csrf.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find a state-changing action (like changing an email or password) that&#x27;s a plain POST.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the request carry any per-session token, or just the ambient session cookie?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Use Nullock&#x27;s CSRF PoC generator on that request -- an auto-submitting form from another origin should still succeed.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5019/*</li><li>POST /login (any user), then use /change-email -- captured.</li><li>Note: no CSRF token in the request, and the session cookie has no SameSite attribute (the header audit flags the cookie).</li><li>A cross-site auto-submitting form to /change-email succeeds.</li><li>Confirm success: POST /flag (logged in first) with an Origin/ Referer header for a different site, e.g. https://evil.example -- simulating the forged cross-site form. Same no-token state change as /change-email; hands back the flag once it succeeds anyway.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>POST /login (any user), then use /change-email -- captured.</li><li>Note: no CSRF token in the request, and the session cookie has no SameSite attribute (the header audit flags the cookie).</li><li>A cross-site auto-submitting form to /change-email succeeds.</li><li>Confirm success: POST /flag (logged in first) with an Origin/ Referer header for a different site, e.g. https://evil.example -- simulating the forged cross-site form. Same no-token state change as /change-email; hands back the flag once it succeeds anyway.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: require a per-session CSRF token on state-changing requests, and set SameSite=Lax/Strict on the session cookie.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

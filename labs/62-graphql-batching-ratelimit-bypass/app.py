@@ -11,7 +11,7 @@ guess list rides in ONE HTTP request, so the limiter only ever sees "1"
 and never trips, no matter how many passwords are inside.
 
 In Nullock:
-    1. nullock scope add http://localhost:5062/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Confirm the limiter is real: in Repeater, POST /graphql four times
        with {"query": "mutation login", "variables": {"username": "admin",
        "password": "password123"}} -- each returns

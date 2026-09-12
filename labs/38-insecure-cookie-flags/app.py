@@ -6,7 +6,7 @@ so it's readable by JavaScript (XSS -> session theft), sent over plaintext
 HTTP (sniffing), and attached cross-site (CSRF).
 
 In Nullock:
-    1. nullock scope add http://localhost:5038/*
+    1. Open this lab's project preset (see labs/README.md).
     2. nullock headeraudit http://localhost:5038/
        -- raises cookie-insecure (missing HttpOnly / Secure / SameSite).
     3. Confirm success: GET / and read the raw Set-Cookie value off the

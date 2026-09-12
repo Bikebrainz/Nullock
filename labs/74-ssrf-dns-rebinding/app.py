@@ -35,7 +35,7 @@ rebind hostname, and watch the SAME request that would 400 for a literal
 127.0.0.1 come back 200 once the hostname is the thing doing the flipping.
 
 In Nullock:
-    1. nullock scope add http://localhost:5074/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /fetch?url=http://127.0.0.1:5074/internal/admin-secret -- 400
        "blocked": the private/loopback filter does work against a literal
        loopback IP.

@@ -25,7 +25,7 @@ Run:
     python app.py
 
 In Nullock:
-    1. nullock scope add http://localhost:5083/*
+    1. Open this lab's project preset (see labs/README.md).
     2. POST /login {"user":"alice","password":"x"} -- alice is a regular,
        non-admin account. Keep the session cookie.
     3. GET /admin/users with alice's cookie -- 403. GET /admin/stats --

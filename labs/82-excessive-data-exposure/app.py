@@ -24,7 +24,7 @@ ever renders pages like a browser does never notices; one that shows you
 the raw wire response does.
 
 In Nullock:
-    1. nullock scope add http://localhost:5082/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Open http://localhost:5082/profile/admin in a browser -- a
        username and a bio, nothing else visible on the page.
     3. In Nullock's Proxy history, find the page's own

@@ -11,7 +11,7 @@ completely different query, once the stored value is reused unsafely --
 the defining trait of second-order (a.k.a. stored/second-round) SQLi.
 
 In Nullock:
-    1. nullock scope add http://localhost:5061/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Nullock's `sqli` active probe sends its payloads straight at each
        request's own parameters and grades the immediate response --
        it has nothing to inject here: /register and /change-password

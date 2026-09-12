@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Unrestricted file upload -&gt; stored XSS</h1>
-  <p class="lead" style="margin-top:12px;">/upload saves the uploaded file under uploads/ using the client-supplied name with no type/content check, and /uploads/&lt;name&gt; serves it back with a guessed content-type. Upload an .html (or .svg) carrying &lt;script&gt; and you have stored XSS; the unsanitized name is also a traversal risk on save. In Nullock: 1. nullock scope add http://localhost:5022/* 2. POST /upload a file &#x27;x.html&#x27; containing &lt;script&gt;alert(1)&lt;/script&gt; 3. Browse /uploads/x.html -- the script executes (stored XSS). 4. Confirm success: GET /flag?name=x.html -- solved only if that stored file both carries a browser-executable content-type (html/svg) and still contains the payload, proving it would actually run. Fix: allow-list extensions/content-types, store outside the web root, serve uploads with Content-Disposition: attachment and a fixed benign content-type, and randomize the stored name (werkzeug.secure_filename).</p>
+  <p class="lead" style="margin-top:12px;">/upload saves the uploaded file under uploads/ using the client-supplied name with no type/content check, and /uploads/&lt;name&gt; serves it back with a guessed content-type. Upload an .html (or .svg) carrying &lt;script&gt; and you have stored XSS; the unsanitized name is also a traversal risk on save. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. POST /upload a file &#x27;x.html&#x27; containing &lt;script&gt;alert(1)&lt;/script&gt; 3. Browse /uploads/x.html -- the script executes (stored XSS). 4. Confirm success: GET /flag?name=x.html -- solved only if that stored file both carries a browser-executable content-type (html/svg) and still contains the payload, proving it would actually run. Fix: allow-list extensions/content-types, store outside the web root, serve uploads with Content-Disposition: attachment and a fixed benign content-type, and randomize the stored name (werkzeug.secure_filename).</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/22-file-upload/app.py
 # then open http://localhost:5022/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5022/*</code><code class="inline">http://127.0.0.1:5022/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5022</code><code class="inline">127.0.0.1:5022</code><p class="muted">Download <a href="22-file-upload.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find the file upload feature and see what file types it accepts.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does it check content, extension, or just accept whatever you send?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Upload an HTML/SVG file containing a script payload and browse to the stored file directly.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5022/*</li><li>POST /upload a file &#x27;x.html&#x27; containing &lt;script&gt;alert(1)&lt;/script&gt;</li><li>Browse /uploads/x.html -- the script executes (stored XSS).</li><li>Confirm success: GET /flag?name=x.html -- solved only if that stored file both carries a browser-executable content-type (html/svg) and still contains the payload, proving it would actually run.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>POST /upload a file &#x27;x.html&#x27; containing &lt;script&gt;alert(1)&lt;/script&gt;</li><li>Browse /uploads/x.html -- the script executes (stored XSS).</li><li>Confirm success: GET /flag?name=x.html -- solved only if that stored file both carries a browser-executable content-type (html/svg) and still contains the payload, proving it would actually run.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: allow-list extensions/content-types, store outside the web root, serve uploads with Content-Disposition: attachment and a fixed benign content-type, and randomize the stored name (werkzeug.secure_filename).</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

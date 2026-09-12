@@ -28,7 +28,7 @@ you don't control. The only way through is a domain suffix trick: register
 literally reads "partner.nullock.test." followed by anything you own.
 
 In Nullock:
-    1. nullock scope add http://localhost:5069/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Send /api/account with header Origin: https://evil.example --
        rejected: no ACAO header at all (the naive reflect-everything bug
        from Lab 16 is NOT present here).

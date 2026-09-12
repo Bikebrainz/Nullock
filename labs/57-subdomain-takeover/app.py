@@ -20,7 +20,7 @@ Run:
     python app.py
 
 In Nullock:
-    1. nullock scope add http://localhost:5057/*
+    1. Open this lab's project preset (see labs/README.md).
     2. POST /api/takeover/test {"url": "http://127.0.0.1:5057/"} -- fetches
        the host and matches its body against Nullock's curated dangling-
        service fingerprint table (subjack/nuclei-style detection).

@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Sensitive file exposure (.env / .git / config backups)</h1>
-  <p class="lead" style="margin-top:12px;">Deployment leftovers are served straight from the web root: a .env with live secrets, the .git/ metadata (full source + history), and a *.bak config. Each is fetchable by anyone who guesses the path. In Nullock: 1. nullock scope add http://localhost:5048/* 2. nullock exposure http://localhost:5048/ -- probes curated sensitive paths and confirms each by content signature (sensitive-file-exposure findings). 3. Confirm success: fetch at least two of /.env, /.git/config, /.git/HEAD, /wp-config.php.bak, then GET /flag -- solved only once more than one distinct leftover was actually retrieved, proving a real exposure sweep rather than one lucky guess. Fix: never deploy .env/.git/backups under the web root; block dotfiles and *.bak at the server; keep secrets out of the document root entirely.</p>
+  <p class="lead" style="margin-top:12px;">Deployment leftovers are served straight from the web root: a .env with live secrets, the .git/ metadata (full source + history), and a *.bak config. Each is fetchable by anyone who guesses the path. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. nullock exposure http://localhost:5048/ -- probes curated sensitive paths and confirms each by content signature (sensitive-file-exposure findings). 3. Confirm success: fetch at least two of /.env, /.git/config, /.git/HEAD, /wp-config.php.bak, then GET /flag -- solved only once more than one distinct leftover was actually retrieved, proving a real exposure sweep rather than one lucky guess. Fix: never deploy .env/.git/backups under the web root; block dotfiles and *.bak at the server; keep secrets out of the document root entirely.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/48-sensitive-file-exposure/app.py
 # then open http://localhost:5048/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5048/*</code><code class="inline">http://127.0.0.1:5048/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5048</code><code class="inline">127.0.0.1:5048</code><p class="muted">Download <a href="48-sensitive-file-exposure.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Try requesting a few well-known filenames directly from the web root.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Backup and version-control files often get left behind by deploy scripts.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>/.env, /.git/config, and *.bak files being directly fetchable all confirm this -- Nullock&#x27;s content-discovery brute-forces exactly this list.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5048/*</li><li>nullock exposure http://localhost:5048/ -- probes curated sensitive paths and confirms each by content signature (sensitive-file-exposure findings).</li><li>Confirm success: fetch at least two of /.env, /.git/config, /.git/HEAD, /wp-config.php.bak, then GET /flag -- solved only once more than one distinct leftover was actually retrieved, proving a real exposure sweep rather than one lucky guess.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>nullock exposure http://localhost:5048/ -- probes curated sensitive paths and confirms each by content signature (sensitive-file-exposure findings).</li><li>Confirm success: fetch at least two of /.env, /.git/config, /.git/HEAD, /wp-config.php.bak, then GET /flag -- solved only once more than one distinct leftover was actually retrieved, proving a real exposure sweep rather than one lucky guess.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never deploy .env/.git/backups under the web root; block dotfiles and *.bak at the server; keep secrets out of the document root entirely.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Blind (boolean-based) SQL injection</h1>
-  <p class="lead" style="margin-top:12px;">/product?id=... concatenates id into a SQLite query. There&#x27;s no error output, but the response differs when the injected condition is true vs false (&quot;in stock&quot; vs &quot;no such product&quot;), so data leaks one bit at a time. In Nullock: 1. nullock scope add http://localhost:5026/* 2. Send /product?id=1 to Repeater. 3. id=1 AND 1=1  -&gt; shown;  id=1 AND 1=2 -&gt; not shown (boolean oracle). 4. Automate with Intruder, e.g. id=1 AND substr((SELECT password FROM users LIMIT 1),1,1)=&#x27;s&#x27; 5. Confirm success: GET /flag?password=&lt;extracted password&gt; -- solved only by submitting the actual admin password extracted bit by bit, never visible through the legitimate /product?id= path. Fix: use parameterized queries; never string-concatenate SQL.</p>
+  <p class="lead" style="margin-top:12px;">/product?id=... concatenates id into a SQLite query. There&#x27;s no error output, but the response differs when the injected condition is true vs false (&quot;in stock&quot; vs &quot;no such product&quot;), so data leaks one bit at a time. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. Send /product?id=1 to Repeater. 3. id=1 AND 1=1  -&gt; shown;  id=1 AND 1=2 -&gt; not shown (boolean oracle). 4. Automate with Intruder, e.g. id=1 AND substr((SELECT password FROM users LIMIT 1),1,1)=&#x27;s&#x27; 5. Confirm success: GET /flag?password=&lt;extracted password&gt; -- solved only by submitting the actual admin password extracted bit by bit, never visible through the legitimate /product?id= path. Fix: use parameterized queries; never string-concatenate SQL.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/26-blind-sqli/app.py
 # then open http://localhost:5026/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5026/*</code><code class="inline">http://127.0.0.1:5026/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5026</code><code class="inline">127.0.0.1:5026</code><p class="muted">Download <a href="26-blind-sqli.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>The obvious SQLi probes don&#x27;t produce a visible error here -- but does the page&#x27;s behavior change?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Try conditions that are always true vs always false in an injectable parameter and diff the responses.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>&#x27; AND 1=1-- vs &#x27; AND 1=2-- producing different page content/length confirms boolean-based blind SQLi.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5026/*</li><li>Send /product?id=1 to Repeater.</li><li>id=1 AND 1=1  -&gt; shown;  id=1 AND 1=2 -&gt; not shown (boolean oracle).</li><li>Automate with Intruder, e.g. id=1 AND substr((SELECT password FROM users LIMIT 1),1,1)=&#x27;s&#x27;</li><li>Confirm success: GET /flag?password=&lt;extracted password&gt; -- solved only by submitting the actual admin password extracted bit by bit, never visible through the legitimate /product?id= path.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>Send /product?id=1 to Repeater.</li><li>id=1 AND 1=1  -&gt; shown;  id=1 AND 1=2 -&gt; not shown (boolean oracle).</li><li>Automate with Intruder, e.g. id=1 AND substr((SELECT password FROM users LIMIT 1),1,1)=&#x27;s&#x27;</li><li>Confirm success: GET /flag?password=&lt;extracted password&gt; -- solved only by submitting the actual admin password extracted bit by bit, never visible through the legitimate /product?id= path.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: use parameterized queries; never string-concatenate SQL.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

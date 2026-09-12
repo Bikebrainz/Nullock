@@ -129,11 +129,18 @@ pip install flask          # + requests / pyjwt / cryptography / pyyaml for the 
 python app.py
 ```
 
-Every lab ships a `.nullock-project.json` that pins scope to the lab host, so
-you don't have to `nullock scope add` by hand — point Nullock at it (or just
-run the steps in `app.py`'s docstring, which set scope for you). The docstring
-is the walkthrough: the vulnerability, the exact `nullock` commands to confirm
-it, and the upstream fix.
+Every lab ships a `.nullock-project.json` with exact localhost host and port
+restrictions. Before following the walkthrough:
+
+1. Create a fresh project directory outside the source tree.
+2. Copy the lab's `.nullock-project.json` into that directory as **`project.json`**.
+   You can also download the preset from the lab's page on the website.
+3. Launch `NullockApp --project=<absolute-directory>` using that directory.
+4. Start the lab separately, then follow the `app.py` docstring.
+
+Starting `app.py` does not load scope into Nullock. The `--project` option takes
+a directory, not the preset file. Basic scope entries are host globs; the preset's
+advanced include rule enforces the lab port. Review scope before running probes.
 
 ## Add a lab
 
@@ -143,9 +150,9 @@ Each lab is:
 1. `app.py` -- runs on a fixed port (`50NN`), with a **module docstring that
    IS the walkthrough**: the vulnerability, the step-by-step `nullock`
    commands to confirm it, and the one-line fix you'd PR upstream.
-2. `.nullock-project.json` -- a project preset pinning scope to the lab host
-   (`inScope: ["http://localhost:50NN/*", ...]`), so opening the lab is
-   pre-scoped. Every lab ships one.
+2. `.nullock-project.json` -- a project preset with host-only `inScope` entries
+   (`localhost`, `127.0.0.1`) and an enabled advanced include rule matching only
+   those hosts and the exact lab port. Every lab ships one.
 
 Each lab should map to a Nullock probe (`xxe`, `crlf`, `verbtamper`,
 `sequencer`, ...) so the learner confirms the bug with the tool.

@@ -6,7 +6,7 @@ Allow header -- and, worse, actually implements them with no
 authentication: an unauthenticated PUT overwrites the file store's content.
 
 In Nullock:
-    1. nullock scope add http://localhost:5045/*
+    1. Open this lab's project preset (see labs/README.md).
     2. nullock methods http://localhost:5045/
        -- reads OPTIONS Allow and flags dangerous-http-methods.
     3. PUT a body to / -- it overwrites the file store's content with no

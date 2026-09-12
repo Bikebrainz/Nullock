@@ -6,7 +6,7 @@ WITHOUT escaping, so a comment containing <script> executes for every later
 visitor.
 
 In Nullock:
-    1. nullock scope add http://localhost:5027/*
+    1. Open this lab's project preset (see labs/README.md).
     2. POST /comment  text=<script>alert(document.domain)</script>
     3. GET / -- the script is served inline and runs for all visitors.
     4. Confirm success: GET /flag -- solved only once a stored comment

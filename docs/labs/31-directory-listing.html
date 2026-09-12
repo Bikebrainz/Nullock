@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Directory listing / index disclosure</h1>
-  <p class="lead" style="margin-top:12px;">/files (no specific file) returns an autoindex of the docroot -- file names an attacker would never have guessed (backups, internal notes). /files/&lt;name&gt; then serves any listed file. In Nullock: 1. nullock scope add http://localhost:5031/* 2. Browse /files -- the listing reveals secret-notes.txt and backup.zip. 3. Fetch /files/secret-notes.txt directly. 4. Confirm success: GET /flag -- solved only once the listing was browsed AND secret-notes.txt was fetched afterward, proving the file was actually discovered via the index rather than blindly guessed. Fix: disable autoindex; serve only an explicit allow-list; keep sensitive files out of the web root.</p>
+  <p class="lead" style="margin-top:12px;">/files (no specific file) returns an autoindex of the docroot -- file names an attacker would never have guessed (backups, internal notes). /files/&lt;name&gt; then serves any listed file. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. Browse /files -- the listing reveals secret-notes.txt and backup.zip. 3. Fetch /files/secret-notes.txt directly. 4. Confirm success: GET /flag -- solved only once the listing was browsed AND secret-notes.txt was fetched afterward, proving the file was actually discovered via the index rather than blindly guessed. Fix: disable autoindex; serve only an explicit allow-list; keep sensitive files out of the web root.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/31-directory-listing/app.py
 # then open http://localhost:5031/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5031/*</code><code class="inline">http://127.0.0.1:5031/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5031</code><code class="inline">127.0.0.1:5031</code><p class="muted">Download <a href="31-directory-listing.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Try requesting a directory path instead of a specific file.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the server return a file listing instead of a 404?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Browse the listing and fetch a file it exposes that was never linked from the app itself.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5031/*</li><li>Browse /files -- the listing reveals secret-notes.txt and backup.zip.</li><li>Fetch /files/secret-notes.txt directly.</li><li>Confirm success: GET /flag -- solved only once the listing was browsed AND secret-notes.txt was fetched afterward, proving the file was actually discovered via the index rather than blindly guessed.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>Browse /files -- the listing reveals secret-notes.txt and backup.zip.</li><li>Fetch /files/secret-notes.txt directly.</li><li>Confirm success: GET /flag -- solved only once the listing was browsed AND secret-notes.txt was fetched afterward, proving the file was actually discovered via the index rather than blindly guessed.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: disable autoindex; serve only an explicit allow-list; keep sensitive files out of the web root.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

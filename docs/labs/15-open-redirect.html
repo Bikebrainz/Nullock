@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Open redirect</h1>
-  <p class="lead" style="margin-top:12px;">/go?next=... issues a 302 to whatever `next` says, with no allow-list, so ?next=https://evil.example sends the victim off-site -- the basis for phishing and OAuth token theft. In Nullock: 1. nullock scope add http://localhost:5015/* 2. Browse http://localhost:5015/go?next=/welcome   (intended) 3. Send to Repeater, set next to:  https://evil.example/ 4. The response is 302 Location: https://evil.example/ -- off origin. 5. Run the active probe (openredirect): it confirms only when the *resolved* Location host leaves the origin (no same-origin FPs), and it tries parser-confusion payloads (//evil, \\evil, @evil). 6. Confirm success: GET /flag?next=https://evil.example/ -- same unvalidated redirect() /go uses, hands back the flag once the resolved Location host genuinely leaves this origin. Fix: allow-list relative paths or exact hosts; reject absolute URLs to other origins.</p>
+  <p class="lead" style="margin-top:12px;">/go?next=... issues a 302 to whatever `next` says, with no allow-list, so ?next=https://evil.example sends the victim off-site -- the basis for phishing and OAuth token theft. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. Browse http://localhost:5015/go?next=/welcome   (intended) 3. Send to Repeater, set next to:  https://evil.example/ 4. The response is 302 Location: https://evil.example/ -- off origin. 5. Run the active probe (openredirect): it confirms only when the *resolved* Location host leaves the origin (no same-origin FPs), and it tries parser-confusion payloads (//evil, \\evil, @evil). 6. Confirm success: GET /flag?next=https://evil.example/ -- same unvalidated redirect() /go uses, hands back the flag once the resolved Location host genuinely leaves this origin. Fix: allow-list relative paths or exact hosts; reject absolute URLs to other origins.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/15-open-redirect/app.py
 # then open http://localhost:5015/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5015/*</code><code class="inline">http://127.0.0.1:5015/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5015</code><code class="inline">127.0.0.1:5015</code><p class="muted">Download <a href="15-open-redirect.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find a redirect parameter -- something like next= or return=.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the app check that the target is on the same site, or does it redirect anywhere?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Point next= at an external URL (https://evil.example) and confirm the app sends you straight there.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5015/*</li><li>Browse http://localhost:5015/go?next=/welcome   (intended)</li><li>Send to Repeater, set next to:  https://evil.example/</li><li>The response is 302 Location: https://evil.example/ -- off origin.</li><li>Run the active probe (openredirect): it confirms only when the *resolved* Location host leaves the origin (no same-origin FPs), and it tries parser-confusion payloads (//evil, \\evil, @evil).</li><li>Confirm success: GET /flag?next=https://evil.example/ -- same unvalidated redirect() /go uses, hands back the flag once the resolved Location host genuinely leaves this origin.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>Browse http://localhost:5015/go?next=/welcome   (intended)</li><li>Send to Repeater, set next to:  https://evil.example/</li><li>The response is 302 Location: https://evil.example/ -- off origin.</li><li>Run the active probe (openredirect): it confirms only when the *resolved* Location host leaves the origin (no same-origin FPs), and it tries parser-confusion payloads (//evil, \\evil, @evil).</li><li>Confirm success: GET /flag?next=https://evil.example/ -- same unvalidated redirect() /go uses, hands back the flag once the resolved Location host genuinely leaves this origin.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: allow-list relative paths or exact hosts; reject absolute URLs to other origins.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

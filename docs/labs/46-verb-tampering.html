@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">HTTP verb tampering (method-based access-control bypass)</h1>
-  <p class="lead" style="margin-top:12px;">/admin is &quot;protected&quot; -- but the check only fires for GET. A POST reaches the handler and returns the admin content, so the access control is bypassed simply by changing the request method (a HEAD slips the gate too, returning 200 -- though with the body stripped, per the HTTP spec). In Nullock: 1. nullock scope add http://localhost:5046/* 2. nullock verbtamper http://localhost:5046/admin -- GET is denied (403); Nullock retries with alternate verbs and method-override headers and flags the ones that flip to 200. 3. Confirm success: POST /admin -- returns the admin panel with no credentials. Then GET /flag -- solved only once a non-GET request actually reached the &quot;protected&quot; handler and got the admin content back, proving the bypass, not just that GET was denied. Fix: enforce authorization independent of HTTP method; deny by default for every verb, not just the one you expected.</p>
+  <p class="lead" style="margin-top:12px;">/admin is &quot;protected&quot; -- but the check only fires for GET. A POST reaches the handler and returns the admin content, so the access control is bypassed simply by changing the request method (a HEAD slips the gate too, returning 200 -- though with the body stripped, per the HTTP spec). In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. nullock verbtamper http://localhost:5046/admin -- GET is denied (403); Nullock retries with alternate verbs and method-override headers and flags the ones that flip to 200. 3. Confirm success: POST /admin -- returns the admin panel with no credentials. Then GET /flag -- solved only once a non-GET request actually reached the &quot;protected&quot; handler and got the admin content back, proving the bypass, not just that GET was denied. Fix: enforce authorization independent of HTTP method; deny by default for every verb, not just the one you expected.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/46-verb-tampering/app.py
 # then open http://localhost:5046/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5046/*</code><code class="inline">http://127.0.0.1:5046/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5046</code><code class="inline">127.0.0.1:5046</code><p class="muted">Download <a href="46-verb-tampering.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>The admin check might only be looking at one specific HTTP method.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>If GET /admin is blocked, what happens with other verbs on the same path?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST or HEAD to the same /admin URL can skip a check that was only ever written for GET.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5046/*</li><li>nullock verbtamper http://localhost:5046/admin -- GET is denied (403); Nullock retries with alternate verbs and method-override headers and flags the ones that flip to 200.</li><li>Confirm success: POST /admin -- returns the admin panel with no credentials. Then GET /flag -- solved only once a non-GET request actually reached the &quot;protected&quot; handler and got the admin content back, proving the bypass, not just that GET was denied.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>nullock verbtamper http://localhost:5046/admin -- GET is denied (403); Nullock retries with alternate verbs and method-override headers and flags the ones that flip to 200.</li><li>Confirm success: POST /admin -- returns the admin panel with no credentials. Then GET /flag -- solved only once a non-GET request actually reached the &quot;protected&quot; handler and got the admin content back, proving the bypass, not just that GET was denied.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: enforce authorization independent of HTTP method; deny by default for every verb, not just the one you expected.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

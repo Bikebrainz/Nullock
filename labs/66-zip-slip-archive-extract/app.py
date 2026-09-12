@@ -21,7 +21,7 @@ one walks an *archive entry name* out of an extraction directory --
 the same missing-containment-check bug, one class of input later.
 
 In Nullock:
-    1. nullock scope add http://localhost:5066/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /config -- the app's current config, theme: "default".
     3. Build a malicious archive locally (Nullock doesn't need to see
        this step, only the upload that follows):

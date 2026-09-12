@@ -7,7 +7,7 @@ APIs) for an attacker. The sitemap enumerates still more, including a
 "secret-report" page that is never linked from anywhere else on the site.
 
 In Nullock:
-    1. nullock scope add http://localhost:5049/*
+    1. Open this lab's project preset (see labs/README.md).
     2. nullock robots http://localhost:5049/
        -- parses robots.txt + sitemap.xml and surfaces every Disallow path
        as recon (robots-disallowed-path findings).

@@ -13,7 +13,7 @@ Run:
     python app.py
 
 In Nullock:
-    1. nullock scope add http://localhost:5052/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /search?cn=alice -- one matching entry, no error: this is the
        baseline. GET /search?cn=admin -- 403 "restricted entry": the app
        blocklists that literal name so casual browsing can't find it.

@@ -28,7 +28,7 @@ interesting result here is the opposite -- alice's session getting bob's
 own 200+amount back is the finding, not a mismatch.
 
 In Nullock:
-    1. nullock scope add http://localhost:5080/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /login?user=alice, then GET /login?user=bob (in a second
        Repeater tab / different Cookie jar) -- each sets its own `sid`.
     3. As alice: GET /api/invoice/1 -- 200, your own invoice. GET

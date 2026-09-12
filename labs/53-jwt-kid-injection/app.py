@@ -16,7 +16,7 @@ Run:
     pip install flask
 
 In Nullock:
-    1. nullock scope add http://localhost:5053/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /login -- an HS256 JWT with kid="hmac.key", signed with a real
        secret generated fresh at startup. GET /account with it -- 200,
        role=user.

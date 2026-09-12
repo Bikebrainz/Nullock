@@ -82,6 +82,8 @@ jobs:
       # without regenerating leaves the public catalog wrong. Same drift gate.
       - name: labs site pages are regenerated
         run: python3 scripts/labs_site.py --check
+      - name: lab presets match source and exact localhost ports
+        run: python3 scripts/lab_presets_regression.py
 
   python-labs:
     name: labs syntax check

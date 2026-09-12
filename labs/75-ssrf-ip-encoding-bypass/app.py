@@ -42,7 +42,7 @@ alternate numeric encodings of the same address) and is found in Repeater
 by hand instead, same precedent as Lab 70's file:// scheme bypass.
 
 In Nullock:
-    1. nullock scope add http://localhost:5075/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /fetch?url=http://127.0.0.1:5075/internal/admin-secret -- 400
        "blocked host": the literal-string blocklist does work for the literal
        spelling.

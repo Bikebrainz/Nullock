@@ -13,7 +13,7 @@ Run:
     python app.py
 
 In Nullock:
-    1. nullock scope add http://localhost:5054/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /login?username=alice&password=wrong -- 401, no match: this is
        the baseline (no XPath error, just "invalid credentials").
     3. GET /login?username=alice'&password=x -- 400, with a real

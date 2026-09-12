@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Information disclosure via verbose errors</h1>
-  <p class="lead" style="margin-top:12px;">/calc?n=... parses input and, on failure, returns the full Python exception traceback -- leaking file paths, the framework version, and internal types an attacker can use to tailor the next step. In Nullock: 1. nullock scope add http://localhost:5029/* 2. /calc?n=21    -&gt; 42 3. /calc?n=oops  -&gt; a stack trace with absolute paths is returned. 4. Confirm success: GET /flag?path=&lt;a fragment of the leaked absolute path&gt; -- solved only by submitting a piece of the real path the traceback exposed, never shown on the happy path. Fix: log details server-side, return a generic error to the client, and never run debug mode / ship stack traces in production.</p>
+  <p class="lead" style="margin-top:12px;">/calc?n=... parses input and, on failure, returns the full Python exception traceback -- leaking file paths, the framework version, and internal types an attacker can use to tailor the next step. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. /calc?n=21    -&gt; 42 3. /calc?n=oops  -&gt; a stack trace with absolute paths is returned. 4. Confirm success: GET /flag?path=&lt;a fragment of the leaked absolute path&gt; -- solved only by submitting a piece of the real path the traceback exposed, never shown on the happy path. Fix: log details server-side, return a generic error to the client, and never run debug mode / ship stack traces in production.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/29-verbose-errors/app.py
 # then open http://localhost:5029/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5029/*</code><code class="inline">http://127.0.0.1:5029/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5029</code><code class="inline">127.0.0.1:5029</code><p class="muted">Download <a href="29-verbose-errors.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Send some deliberately malformed input somewhere and see what comes back.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the error response look like a generic message, or does it look like raw debug output?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>A full stack trace on bad input leaks file paths, framework version, and internal logic -- confirm with a malformed request.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5029/*</li><li>/calc?n=21    -&gt; 42</li><li>/calc?n=oops  -&gt; a stack trace with absolute paths is returned.</li><li>Confirm success: GET /flag?path=&lt;a fragment of the leaked absolute path&gt; -- solved only by submitting a piece of the real path the traceback exposed, never shown on the happy path.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>/calc?n=21    -&gt; 42</li><li>/calc?n=oops  -&gt; a stack trace with absolute paths is returned.</li><li>Confirm success: GET /flag?path=&lt;a fragment of the leaked absolute path&gt; -- solved only by submitting a piece of the real path the traceback exposed, never shown on the happy path.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: log details server-side, return a generic error to the client, and never run debug mode / ship stack traces in production.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

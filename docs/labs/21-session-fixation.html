@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Session fixation</h1>
-  <p class="lead" style="margin-top:12px;">The app tracks sessions with a custom `sid` cookie and does NOT rotate it on login. An attacker who plants a known `sid` in the victim&#x27;s browser (via a link/script) ends up authenticated as the victim once they log in. In Nullock: 1. nullock scope add http://localhost:5021/* 2. GET / -- note the `sid` the server assigns. 3. In Repeater, POST /login carrying that same `sid` -- after login the SAME `sid` is authenticated (no rotation). GET /whoami with it. 4. So a pre-planted `sid` survives the privilege change. 5. Confirm success: GET /flag with the SAME `sid` cookie used in steps 2-3 -- only a sid that was already known BEFORE login, and is now authenticated, proves the fixation actually worked. Fix: generate a fresh session id on every login (and privilege change).</p>
+  <p class="lead" style="margin-top:12px;">The app tracks sessions with a custom `sid` cookie and does NOT rotate it on login. An attacker who plants a known `sid` in the victim&#x27;s browser (via a link/script) ends up authenticated as the victim once they log in. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. GET / -- note the `sid` the server assigns. 3. In Repeater, POST /login carrying that same `sid` -- after login the SAME `sid` is authenticated (no rotation). GET /whoami with it. 4. So a pre-planted `sid` survives the privilege change. 5. Confirm success: GET /flag with the SAME `sid` cookie used in steps 2-3 -- only a sid that was already known BEFORE login, and is now authenticated, proves the fixation actually worked. Fix: generate a fresh session id on every login (and privilege change).</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/21-session-fixation/app.py
 # then open http://localhost:5021/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5021/*</code><code class="inline">http://127.0.0.1:5021/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5021</code><code class="inline">127.0.0.1:5021</code><p class="muted">Download <a href="21-session-fixation.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Note your session cookie&#x27;s value before logging in.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Log in, then check the cookie again -- did it change?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>If the pre-login session id is still valid post-login, an attacker who fixed that id on a victim inherits their session.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5021/*</li><li>GET / -- note the `sid` the server assigns.</li><li>In Repeater, POST /login carrying that same `sid` -- after login the SAME `sid` is authenticated (no rotation). GET /whoami with it.</li><li>So a pre-planted `sid` survives the privilege change.</li><li>Confirm success: GET /flag with the SAME `sid` cookie used in steps 2-3 -- only a sid that was already known BEFORE login, and is now authenticated, proves the fixation actually worked.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>GET / -- note the `sid` the server assigns.</li><li>In Repeater, POST /login carrying that same `sid` -- after login the SAME `sid` is authenticated (no rotation). GET /whoami with it.</li><li>So a pre-planted `sid` survives the privilege change.</li><li>Confirm success: GET /flag with the SAME `sid` cookie used in steps 2-3 -- only a sid that was already known BEFORE login, and is now authenticated, proves the fixation actually worked.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: generate a fresh session id on every login (and privilege change).</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

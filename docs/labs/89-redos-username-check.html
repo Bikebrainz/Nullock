@@ -51,7 +51,7 @@ python labs/89-redos-username-check/app.py
 # then open http://localhost:5089/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5089/*</code><code class="inline">http://127.0.0.1:5089/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5089</code><code class="inline">127.0.0.1:5089</code><p class="muted">Download <a href="89-redos-username-check.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>POST /account/check-username with an ordinary name like alice -- fast, and the response even tells you the elapsed milliseconds. Now look at the regex a username has to match before anything else happens.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The pattern nests one unbounded group inside another over the same character class -- a shape that&#x27;s fine for strings that fully match, but explodes on a string that ALMOST matches: many valid characters, then one character that breaks it.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST a username of 26 letters followed by one symbol that isn&#x27;t in the allowed set, like &#x27;a&#x27; * 26 + &#x27;!&#x27; -- elapsed_ms jumps into the thousands from a single request. GET /flag once the server has also seen a fast, ordinary request to prove it isn&#x27;t just a slow box.</p></details></div>
 
@@ -62,7 +62,7 @@ python labs/89-redos-username-check/app.py
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>
