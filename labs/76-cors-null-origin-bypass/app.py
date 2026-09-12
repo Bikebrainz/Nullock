@@ -37,7 +37,7 @@ reports no finding here. This is a Repeater find, same precedent as Lab
 69's own literal-header edit.
 
 In Nullock:
-    1. nullock scope add http://localhost:5076/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Send /api/wallet to Repeater with header Origin: https://attacker.example
        -- no Access-Control-Allow-Origin comes back at all: the anchored
        allow-list correctly rejects an arbitrary origin.

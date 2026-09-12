@@ -10,7 +10,7 @@ confirm: forward only the Content-Length-declared prefix of a chunked body
 and the backend blocks reading a chunk continuation that will never arrive.
 
 In Nullock:
-    1. nullock scope add http://localhost:5058/*
+    1. Open this lab's project preset (see labs/README.md).
     2. nullock smuggle http://localhost:5058/
        -- times a CL.TE and a TE.CL desync probe against a baseline. The
        CL.TE probe's dangling chunk (forwarded whole by Content-Length,

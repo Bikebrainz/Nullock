@@ -6,7 +6,7 @@ Spoof Host: and the reset link points at the attacker's server -- when the
 victim clicks it, their reset token lands in the attacker's logs.
 
 In Nullock:
-    1. nullock scope add http://localhost:5023/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Send /forgot to Repeater with body user=alice and header
            Host: evil.example
     3. The returned 'reset link' uses evil.example -- poisoned.

@@ -223,10 +223,10 @@ cmd_rule() {
 
 cmd_scope() {
     # Scope is the authorization gate for every active probe -- nothing is
-    # tested out of scope. Globs look like http://host/* or host or *.host.
+    # tested out of scope. Globs match hosts: localhost or *.example.test. Ports and paths use advanced scope.
     case ${1:-list} in
         add)
-            [[ -n ${2-} ]] || die "usage: nullock scope add <glob>   (e.g. http://localhost:5043/*)"
+            [[ -n ${2-} ]] || die "usage: nullock scope add <glob>   (e.g. localhost)"
             post /api/scope/in/add "{\"glob\":$(jsonq "$2")}" | pp ;;
         rm|remove)
             [[ -n ${2-} ]] || die "usage: nullock scope rm <glob>"
@@ -1734,7 +1734,7 @@ Status / inspection:
   nullock findings [severity]    findings list (filter: high|medium|low|info)
 
 Scope (authorization gate -- active probes only run in scope):
-  nullock scope add <glob>       add an in-scope rule (e.g. http://localhost:5043/*)
+  nullock scope add <glob>       add an in-scope rule (e.g. localhost)
   nullock scope rm <glob>        remove an in-scope rule
   nullock scope exclude <glob>   add an out-of-scope (excluded) rule
   nullock scope unexclude <glob> drop an out-of-scope rule

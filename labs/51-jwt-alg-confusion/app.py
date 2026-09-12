@@ -13,7 +13,7 @@ Run:
     python app.py
 
 In Nullock:
-    1. nullock scope add http://localhost:5051/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /login -- a JWT (role=user, RS256-signed). GET /pubkey -- the
        RSA public key PEM the server verifies against.
     3. POST /api/jwt/forge {"token": <the RS256 token>, "attack": "hs256",

@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">robots.txt / sitemap leaking hidden attack surface</h1>
-  <p class="lead" style="margin-top:12px;">robots.txt lists Disallow paths an admin wanted crawlers to skip -- which is exactly a map of the unlinked, sensitive areas (admin, backups, internal APIs) for an attacker. The sitemap enumerates still more, including a &quot;secret-report&quot; page that is never linked from anywhere else on the site. In Nullock: 1. nullock scope add http://localhost:5049/* 2. nullock robots http://localhost:5049/ -- parses robots.txt + sitemap.xml and surfaces every Disallow path as recon (robots-disallowed-path findings). 3. Confirm success: GET /sitemap.xml (or /robots.txt), then GET /secret-report -- content only discoverable via that recon, never linked from the homepage. Then GET /flag -- solved only once the hidden page was reached AFTER actually reading the map that named it, proving real recon rather than a blind guess. Fix: don&#x27;t rely on robots.txt/sitemap for security -- they&#x27;re public. Put real access control on those paths and don&#x27;t enumerate secrets in them.</p>
+  <p class="lead" style="margin-top:12px;">robots.txt lists Disallow paths an admin wanted crawlers to skip -- which is exactly a map of the unlinked, sensitive areas (admin, backups, internal APIs) for an attacker. The sitemap enumerates still more, including a &quot;secret-report&quot; page that is never linked from anywhere else on the site. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. nullock robots http://localhost:5049/ -- parses robots.txt + sitemap.xml and surfaces every Disallow path as recon (robots-disallowed-path findings). 3. Confirm success: GET /sitemap.xml (or /robots.txt), then GET /secret-report -- content only discoverable via that recon, never linked from the homepage. Then GET /flag -- solved only once the hidden page was reached AFTER actually reading the map that named it, proving real recon rather than a blind guess. Fix: don&#x27;t rely on robots.txt/sitemap for security -- they&#x27;re public. Put real access control on those paths and don&#x27;t enumerate secrets in them.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/49-robots-disclosure/app.py
 # then open http://localhost:5049/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5049/*</code><code class="inline">http://127.0.0.1:5049/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5049</code><code class="inline">127.0.0.1:5049</code><p class="muted">Download <a href="49-robots-disclosure.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Check /robots.txt before you look anywhere else.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Disallow entries are instructions to crawlers, not access controls -- what do they point at?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Visit the paths robots.txt tells search engines NOT to index; nothing stops you from just requesting them.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5049/*</li><li>nullock robots http://localhost:5049/ -- parses robots.txt + sitemap.xml and surfaces every Disallow path as recon (robots-disallowed-path findings).</li><li>Confirm success: GET /sitemap.xml (or /robots.txt), then GET /secret-report -- content only discoverable via that recon, never linked from the homepage. Then GET /flag -- solved only once the hidden page was reached AFTER actually reading the map that named it, proving real recon rather than a blind guess.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>nullock robots http://localhost:5049/ -- parses robots.txt + sitemap.xml and surfaces every Disallow path as recon (robots-disallowed-path findings).</li><li>Confirm success: GET /sitemap.xml (or /robots.txt), then GET /secret-report -- content only discoverable via that recon, never linked from the homepage. Then GET /flag -- solved only once the hidden page was reached AFTER actually reading the map that named it, proving real recon rather than a blind guess.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: don&#x27;t rely on robots.txt/sitemap for security -- they&#x27;re public. Put real access control on those paths and don&#x27;t enumerate secrets in them.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

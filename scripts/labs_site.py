@@ -720,7 +720,10 @@ def read_scope(slug):
     if not os.path.exists(path):
         return []
     try:
-        return json.load(io.open(path, encoding="utf-8")).get("inScope", [])
+        with io.open(path, encoding="utf-8") as f:
+            preset = json.load(f)
+        ports = sorted({r["portFrom"] for r in preset.get("advancedScope", []) if r.get("enabled") and r.get("include")})
+        return ["%s:%s" % (host, port) for host in preset.get("inScope", []) for port in ports]
     except Exception:
         return []
 
@@ -944,9 +947,9 @@ def build_detail(l, n_labs):
     scope = l.get("scope", [])
     scope_html = ""
     if scope:
-        scope_html = ('<div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div>'
+        scope_html = ('<div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div>'
                       + "".join('<code class="inline">%s</code>' % E(s) for s in scope)
-                      + '</div>')
+                       + '<p class="muted">Download <a href="%s.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>' % E(l["slug"]))
 
     fix = ('<div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>%s</p></div>'
            % E(l["fix"])) if l.get("fix") else ""
@@ -998,7 +1001,7 @@ def build_detail(l, n_labs):
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>""" % (
         E(l["num"]), E(l["category"]), E(l["difficulty"].lower()), E(l["difficulty"]), E(l["port"]),
@@ -1094,6 +1097,8 @@ def generate():
     files = {os.path.join(OUT, "index.html"): build_index(labs)}
     for l in labs:
         files[os.path.join(OUT, l["slug"] + ".html")] = build_detail(l, len(labs))
+        with io.open(os.path.join(LABS, l["slug"], ".nullock-project.json"), encoding="utf-8") as f:
+            files[os.path.join(OUT, l["slug"] + ".project.json")] = f.read()
     files[APP_DATA] = build_app_data(labs)
     return files, labs
 
@@ -1112,7 +1117,7 @@ def main():
         expected = {os.path.basename(p) for p in files}
         if os.path.isdir(OUT):
             for name in os.listdir(OUT):
-                if name.endswith(".html") and name not in expected:
+                if (name.endswith(".html") or name.endswith(".project.json")) and name not in expected:
                     stale.append(os.path.join(OUT, name) + " (orphan; lab removed)")
         if stale:
             sys.stderr.write("labs site is STALE:\n  " + "\n  ".join(stale) + "\n")
@@ -1127,7 +1132,7 @@ def main():
     expected = {os.path.basename(p) for p in files}
     removed = []
     for name in sorted(os.listdir(OUT)):
-        if name.endswith(".html") and name not in expected:
+        if (name.endswith(".html") or name.endswith(".project.json")) and name not in expected:
             os.remove(os.path.join(OUT, name)); removed.append(name)
     print("wrote %d labs pages (%d labs)" % (len(files), len(labs)))
     for name in removed:

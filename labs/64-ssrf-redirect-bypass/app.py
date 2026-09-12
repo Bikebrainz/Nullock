@@ -16,7 +16,7 @@ the blocked substrings from /fetch's filter; /fetch happily requests
 and the outbound client silently follows it there.
 
 In Nullock:
-    1. nullock scope add http://localhost:5064/*
+    1. Open this lab's project preset (see labs/README.md).
     2. /fetch?url=http://127.0.0.1:5064/internal -- 400 "blocked host":
        the naive filter works against a direct hit.
     3. Base64-encode the real target yourself (or note the one below) and

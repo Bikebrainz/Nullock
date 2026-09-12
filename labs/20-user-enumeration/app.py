@@ -6,7 +6,7 @@ password" for a real one -- so an attacker can enumerate valid usernames
 without ever logging in.
 
 In Nullock:
-    1. nullock scope add http://localhost:5020/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Send /login to Intruder; fuzz the `user` field with a wordlist.
     3. Filter responses: a "Wrong password" body means the user exists.
     4. Confirm success: GET /flag?user=svcbot-4f2a -- a service account

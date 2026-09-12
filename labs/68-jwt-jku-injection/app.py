@@ -17,7 +17,7 @@ real key at all -- the attacker supplies an entirely new one and the server
 fetches it because the token said to.
 
 In Nullock:
-    1. nullock scope add http://localhost:5068/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /login -- an RS256 token, header includes "kid":"prod-2026" and
        "jku":"http://127.0.0.1:5068/jwks" (the server's real key set).
        GET /admin with it: 403 (role is "user"). Note there's no

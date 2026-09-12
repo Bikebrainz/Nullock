@@ -27,7 +27,7 @@ a manual bypass, THIS lab's finding is one the automated `/api/ssrf/test`
 confirms outright, no hand-crafted encoding required.
 
 In Nullock:
-    1. nullock scope add http://localhost:5078/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /fetch?url=http://169.254.169.254/latest/meta-data/ -- 400
        "blocked host": the one host the blocklist actually defends.
     3. GET /fetch?url=http://127.0.0.1:2375/version -- 200, and the body IS

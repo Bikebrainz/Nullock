@@ -6,7 +6,7 @@ or X-Content-Type-Options -- leaving it open to XSS escalation, TLS
 stripping, and MIME sniffing.
 
 In Nullock:
-    1. nullock scope add http://localhost:5039/*
+    1. Open this lab's project preset (see labs/README.md).
     2. nullock headeraudit http://localhost:5039/
        -- raises csp-missing, xcto-missing, clickjacking-missing (and more).
        Note: hsts-missing does NOT fire here -- that check only applies to

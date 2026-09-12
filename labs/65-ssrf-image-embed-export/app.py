@@ -21,7 +21,7 @@ calls that check at all, because nobody traced the second place the app
 makes an outbound request on the user's behalf.
 
 In Nullock:
-    1. nullock scope add http://localhost:5065/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Confirm the guarded path: POST /fetch {"url":
        "http://127.0.0.1:5065/internal"} -- 400 "blocked host".
     3. Save a report whose body embeds the same target as an <img> tag

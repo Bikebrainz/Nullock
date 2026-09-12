@@ -51,7 +51,7 @@ python labs/11-prototype-pollution/app.py
 # then open http://localhost:5011/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5011/*</code><code class="inline">http://127.0.0.1:5011/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5011</code><code class="inline">127.0.0.1:5011</code><p class="muted">Download <a href="11-prototype-pollution.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find the endpoint that deep-merges a JSON body into an existing object.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>What happens if your JSON keys target __class__ or a similarly special attribute instead of a normal field?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>A nested key path through __class__/__init__/__globals__ in the merged JSON can reach and poison shared object state.</p></details></div>
 
@@ -62,7 +62,7 @@ python labs/11-prototype-pollution/app.py
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

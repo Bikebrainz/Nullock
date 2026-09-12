@@ -4882,7 +4882,7 @@ function LabsTab({ dispatch }) {
     <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Labs</span>
-        <span style={{ color: "var(--dim)", fontSize: "11px" }}>50 intentionally-vulnerable practice targets, run on localhost -- objective, hints, walkthrough and a live flag check, without leaving the app</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>{labs.length} intentionally-vulnerable practice targets, run on localhost -- objective, hints, walkthrough and a live flag check, without leaving the app</span>
         <span style={{ marginLeft: "auto", fontSize: "12px" }}>
           <span style={{ color: "var(--accent)", fontWeight: 700 }}>{xp.earned}</span>
           <span style={{ color: "var(--dim)" }}> / {xp.possible} XP</span>
@@ -4959,10 +4959,13 @@ function LabsTab({ dispatch }) {
                 <span style={{ color: "var(--dim)", fontSize: "11px" }}>{selected.category} · +{xpTable[selected.difficulty] || 0} XP</span>
               </div>
               <p style={{ fontSize: "12.5px", color: "var(--text-2)", marginTop: 6 }}>{selected.desc || selected.vuln}</p>
-              <div style={{ fontFamily: "var(--ff-mono)", fontSize: "11.5px", background: "var(--bg-deep)", border: "1px solid var(--line)", borderRadius: 4, padding: 8, marginTop: 6 }}>
+              <div style={{ fontFamily: "var(--ff-mono)", fontSize: "11.5px", background: "var(--bg-deep)", border: "1px solid var(--line)", borderRadius: 4, padding: 8, marginTop: 6, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
                 python labs/{selected.slug}/app.py{"\n"}# then open http://localhost:{selected.port}/
               </div>
 
+              <p style={{ fontSize: "12px", color: "var(--text-2)", overflowWrap: "anywhere" }}>
+                Before sending requests, copy labs/{selected.slug}/.nullock-project.json from the source checkout into a fresh directory as project.json, then launch NullockApp --project=&lt;absolute-directory&gt;. The preset restricts scope to localhost:{selected.port}; starting the lab alone does not load it.
+              </p>
               <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
                 <button className="btn" onClick={() => sendFlagCheckToRepeater(selected)}>SEND GET /flag TO REPEATER</button>
                 <button className="btn" onClick={() => toggleSolved(selected.slug)}>

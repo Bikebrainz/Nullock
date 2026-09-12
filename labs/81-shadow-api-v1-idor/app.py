@@ -28,7 +28,7 @@ against `/api/v1/users/<id>` confirms the same numeric-id-walk that v2
 correctly blocks succeeds unauthenticated on v1.
 
 In Nullock:
-    1. nullock scope add http://localhost:5081/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /login?user=alice -- sets a `sid` cookie (alice is user id 1).
     3. As alice: GET /api/v2/users/2 -- 403 (bob's record, correctly
        refused; v2's ownership check works).

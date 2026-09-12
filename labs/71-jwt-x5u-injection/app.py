@@ -30,7 +30,7 @@ is outside all of them, so this is a hand-with-Repeater-plus-a-forge lab
 like 68, not something the active prober can stumble into.
 
 In Nullock:
-    1. nullock scope add http://localhost:5071/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /login -- an RS256 token, header "x5u" points at this server's
        own /certs/server (a real, self-signed cert this app generated at
        startup). GET /admin with it: 403 (role is "user").

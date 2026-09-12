@@ -25,7 +25,7 @@ Run:
     python app.py
 
 In Nullock:
-    1. Set scope to http://localhost:5067/* (or use the pre-set project
+    1. Open this lab's project preset (see labs/README.md) (or use the pre-set project
        file), then confirm introspection is on:
        POST /graphql {"query": "{ __schema { types { name } } }"}.
     2. Run the built-in GraphQL active probe (PROBE tab's GraphQL toolkit,

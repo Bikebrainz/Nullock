@@ -25,7 +25,7 @@ it structurally cannot be pointed at a file:// target -- this lab's bug
 sits in the prober's own blind spot, and is found in Repeater instead.
 
 In Nullock:
-    1. nullock scope add http://localhost:5070/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /fetch?url=http://127.0.0.1:5070/ -- 400 "blocked host": the
        loopback/metadata blocklist does work for network schemes.
     3. Send /fetch to Repeater and change url to

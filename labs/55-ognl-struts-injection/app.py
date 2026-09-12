@@ -19,7 +19,7 @@ Run:
     python app.py
 
 In Nullock:
-    1. nullock scope add http://localhost:5055/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Browse /greet?name=world -- "hello, world!".
     3. Send to Repeater. Change name to: %{7*7}
        Response: "hello, 49!" -- the expression was evaluated, not echoed.

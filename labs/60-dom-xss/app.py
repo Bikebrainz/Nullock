@@ -10,7 +10,7 @@ only greps the response body for a reflected payload finds nothing; the
 sink only fires once a real browser parses and runs the inline script.
 
 In Nullock:
-    1. nullock scope add http://localhost:5060/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Fetch / through the Proxy -- the passive scanner's DOM-XSS sink
        check flags it anyway: it reads the inline script source itself and
        matches the `.innerHTML = ...location...` pattern, no execution

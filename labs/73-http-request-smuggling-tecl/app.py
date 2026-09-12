@@ -12,7 +12,7 @@ never come once the front-end has already relayed everything it parsed as
 "this request's" chunked body.
 
 In Nullock:
-    1. nullock scope add http://localhost:5073/*
+    1. Open this lab's project preset (see labs/README.md).
     2. nullock smuggle http://localhost:5073/
        -- times a CL.TE and a TE.CL desync probe against a baseline. This
        lab's front-end/backend disagreement only reproduces the TE.CL

@@ -14,7 +14,7 @@ Run:
     python app.py
 
 In Nullock:
-    1. nullock scope add http://localhost:5056/*
+    1. Open this lab's project preset (see labs/README.md).
     2. POST /login (form field "user", default alice) -- note the
        Set-Cookie: session=... in the response
        (curl -i -X POST -d user=alice http://127.0.0.1:5056/login).

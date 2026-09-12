@@ -25,7 +25,7 @@ there is only ever one user acting on their own record; the gap is which
 FIELDS of that record a mutation lets the caller set, not which record.
 
 In Nullock:
-    1. nullock scope add http://localhost:5084/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /login?user=alice -- sets a session cookie. alice starts non-admin.
     3. As alice: PUT /api/profile {"bio":"hi","role":"admin"} -- 200, but
        GET /api/profile shows role is still "user". The allow-listed REST

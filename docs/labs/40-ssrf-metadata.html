@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">SSRF to internal-only services (cloud-metadata pattern)</h1>
-  <p class="lead" style="margin-top:12px;">/fetch?url=... makes a server-side request to any URL with no allow-list, so it can reach services the client can&#x27;t -- this app&#x27;s own /internal endpoint (intended to be server-only), or cloud metadata at http://169.254.169.254/. In Nullock: 1. nullock scope add http://localhost:5040/* 2. /fetch?url=http://127.0.0.1:5040/internal -- returns the internal secret through the server&#x27;s own request. 3. On a real cloud host: url=http://169.254.169.254/latest/meta-data/. 4. Confirm success: GET /flag -- solved only once /fetch&#x27;s SERVER-SIDE request actually returned the internal secret, proving the SSRF pivot worked (not just that /internal was requested directly). Fix: allow-list destination hosts/schemes; block loopback/link-local/RFC1918; re-resolve and re-check the IP to defeat DNS rebinding. (Needs `requests`, which is the labs&#x27; only non-Flask dependency.)</p>
+  <p class="lead" style="margin-top:12px;">/fetch?url=... makes a server-side request to any URL with no allow-list, so it can reach services the client can&#x27;t -- this app&#x27;s own /internal endpoint (intended to be server-only), or cloud metadata at http://169.254.169.254/. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. /fetch?url=http://127.0.0.1:5040/internal -- returns the internal secret through the server&#x27;s own request. 3. On a real cloud host: url=http://169.254.169.254/latest/meta-data/. 4. Confirm success: GET /flag -- solved only once /fetch&#x27;s SERVER-SIDE request actually returned the internal secret, proving the SSRF pivot worked (not just that /internal was requested directly). Fix: allow-list destination hosts/schemes; block loopback/link-local/RFC1918; re-resolve and re-check the IP to defeat DNS rebinding. (Needs `requests`, which is the labs&#x27; only non-Flask dependency.)</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/40-ssrf-metadata/app.py
 # then open http://localhost:5040/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5040/*</code><code class="inline">http://127.0.0.1:5040/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5040</code><code class="inline">127.0.0.1:5040</code><p class="muted">Download <a href="40-ssrf-metadata.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>This is another server-side fetch feature -- but try pointing it somewhere more specific than localhost.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Cloud providers expose an instance-metadata service at a well-known link-local address.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Point url= at http://169.254.169.254/ (the cloud metadata IP) and see what the server fetches back for you.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5040/*</li><li>/fetch?url=http://127.0.0.1:5040/internal -- returns the internal secret through the server&#x27;s own request.</li><li>On a real cloud host: url=http://169.254.169.254/latest/meta-data/.</li><li>Confirm success: GET /flag -- solved only once /fetch&#x27;s SERVER-SIDE request actually returned the internal secret, proving the SSRF pivot worked (not just that /internal was requested directly).</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>/fetch?url=http://127.0.0.1:5040/internal -- returns the internal secret through the server&#x27;s own request.</li><li>On a real cloud host: url=http://169.254.169.254/latest/meta-data/.</li><li>Confirm success: GET /flag -- solved only once /fetch&#x27;s SERVER-SIDE request actually returned the internal secret, proving the SSRF pivot worked (not just that /internal was requested directly).</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: allow-list destination hosts/schemes; block loopback/link-local/RFC1918; re-resolve and re-check the IP to defeat DNS rebinding.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

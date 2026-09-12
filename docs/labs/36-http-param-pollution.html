@@ -42,7 +42,7 @@
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">HTTP parameter pollution (inconsistent duplicate handling)</h1>
-  <p class="lead" style="margin-top:12px;">/transfer authorizes against the FIRST occurrence of a duplicated parameter but debits the LAST -- so amount=10&amp;amount=10000 passes a &quot;&lt;=100&quot; check on 10 while 10000 is what actually moves. In Nullock: 1. nullock scope add http://localhost:5036/* 2. POST /transfer amount=10  -&gt; authorized + debited 10. 3. Send to Repeater, body:  amount=10&amp;amount=10000 4. The check sees 10 (allowed); the debit uses 10000 -- HPP bypass. 5. Confirm success: GET /flag -- solved only once a transfer actually cleared the &lt;=100 check while debiting more than 100. Fix: reject duplicate parameters (or canonicalize to one value) and use a single parsed value consistently for both the check and the action.</p>
+  <p class="lead" style="margin-top:12px;">/transfer authorizes against the FIRST occurrence of a duplicated parameter but debits the LAST -- so amount=10&amp;amount=10000 passes a &quot;&lt;=100&quot; check on 10 while 10000 is what actually moves. In Nullock: 1. Open this lab&#x27;s project preset (see labs/README.md). 2. POST /transfer amount=10  -&gt; authorized + debited 10. 3. Send to Repeater, body:  amount=10&amp;amount=10000 4. The check sees 10 (allowed); the debit uses 10000 -- HPP bypass. 5. Confirm success: GET /flag -- solved only once a transfer actually cleared the &lt;=100 check while debiting more than 100. Fix: reject duplicate parameters (or canonicalize to one value) and use a single parsed value consistently for both the check and the action.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,18 +51,18 @@ python labs/36-http-param-pollution/app.py
 # then open http://localhost:5036/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5036/*</code><code class="inline">http://127.0.0.1:5036/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5036</code><code class="inline">127.0.0.1:5036</code><p class="muted">Download <a href="36-http-param-pollution.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find a parameter that appears once in a request, and try sending it twice with different values.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Which duplicate value does the validation step use, and which one does the actual action use?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>If the check reads the first occurrence and the action reads the last (or vice versa), pass validation with one value and act with another.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5036/*</li><li>POST /transfer amount=10  -&gt; authorized + debited 10.</li><li>Send to Repeater, body:  amount=10&amp;amount=10000</li><li>The check sees 10 (allowed); the debit uses 10000 -- HPP bypass.</li><li>Confirm success: GET /flag -- solved only once a transfer actually cleared the &lt;=100 check while debiting more than 100.</li></ol>
+  <ol class="labs-steps"><li>Open this lab&#x27;s project preset (see labs/README.md).</li><li>POST /transfer amount=10  -&gt; authorized + debited 10.</li><li>Send to Repeater, body:  amount=10&amp;amount=10000</li><li>The check sees 10 (allowed); the debit uses 10000 -- HPP bypass.</li><li>Confirm success: GET /flag -- solved only once a transfer actually cleared the &lt;=100 check while debiting more than 100.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: reject duplicate parameters (or canonicalize to one value) and use a single parsed value consistently for both the check and the action.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

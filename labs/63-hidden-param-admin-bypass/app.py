@@ -14,7 +14,7 @@ down or linked anywhere -- only an active parameter-name brute-force
 baseline will ever turn it up.
 
 In Nullock:
-    1. nullock scope add http://localhost:5063/*
+    1. Open this lab's project preset (see labs/README.md).
     2. Crawl the site (Discover) and browse /admin directly: 403 Forbidden,
        every time, and there is nothing in the index page or its JS hinting
        at any extra parameter -- read-only reconnaissance dead-ends here.

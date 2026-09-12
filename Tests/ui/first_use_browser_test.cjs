@@ -47,6 +47,13 @@ async function freePort(){const s=net.createServer().listen(0,'127.0.0.1');await
   assert.ok(await guide.getByRole('button',{name:'STAGE FIRST REQUEST'}).isDisabled());
   await page.getByRole('button',{name:'CLOSE SETUP GUIDE'}).click();await page.reload();
   assert.equal(await guide.count(),0,'explicit dismissal survives reload within this project generation');
+  await page.getByRole('tab',{name:/LABS/i}).click();
+  const labCount=await page.evaluate(()=>window.NULLOCK_LABS.length);
+  await page.getByText(`${labCount} intentionally-vulnerable practice targets`,{exact:false}).waitFor();
+  const firstLabTitle=await page.evaluate(()=>window.NULLOCK_LABS[0].title);
+  await page.getByText(firstLabTitle,{exact:true}).click();
+  await page.getByText('Before sending requests, copy labs/',{exact:false}).waitFor();
+  if(process.env.LABS_SCREENSHOT)await page.screenshot({path:path.resolve(process.env.LABS_SCREENSHOT)});
   const sitePage=await browser.newPage({viewport:{width:1440,height:1100}});sitePage.on('pageerror',e=>errors.push(e.message));
   await sitePage.goto(`http://127.0.0.1:${site.address().port}/docs/#first-capture`);
   await sitePage.locator('#first-capture').scrollIntoViewIfNeeded();
@@ -55,7 +62,14 @@ async function freePort(){const s=net.createServer().listen(0,'127.0.0.1');await
   if(process.env.FIRST_USE_SITE_SCREENSHOT)await sitePage.screenshot({path:path.resolve(process.env.FIRST_USE_SITE_SCREENSHOT)});
   await sitePage.setViewportSize({width:390,height:844});
   assert.ok(await sitePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'docs have no horizontal overflow on a narrow screen');
-  assert.deepEqual(errors,[]);console.log('PASS: first-use guide uses live ports, scope-to-capture-to-Repeater works, projects reset the guide, dismissal persists, and site instructions render at desktop/mobile widths');
+  await sitePage.goto(`http://127.0.0.1:${site.address().port}/labs/67-graphql-depth-dos.html`);
+  const download=sitePage.getByRole('link',{name:'project.json',exact:true});
+  assert.equal(await download.getAttribute('download'),'project.json');
+  const preset=await(await fetch(new URL(await download.getAttribute('href'),sitePage.url()))).json();
+  assert.equal(preset.advancedScope[0].portFrom,5067);
+  assert.ok(await sitePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'long lab payload wraps on mobile');
+  if(process.env.LABS_SITE_SCREENSHOT)await sitePage.screenshot({path:path.resolve(process.env.LABS_SITE_SCREENSHOT),fullPage:true});
+  assert.deepEqual(errors,[]);console.log('PASS: first-use guide uses live ports, scope-to-capture-to-Repeater works, projects reset the guide, dismissal persists, the lab catalog shows its actual count, presets download, and site instructions render at desktop/mobile widths');
   await api('/api/app/quit',{});
  }finally{
   if(browser)await browser.close();if(app.exitCode===null)app.kill();await exited;

@@ -51,7 +51,7 @@ python labs/72-blind-ssrf-oast/app.py
 # then open http://localhost:5072/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5072/*</code><code class="inline">http://127.0.0.1:5072/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">preset endpoints</div><code class="inline">localhost:5072</code><code class="inline">127.0.0.1:5072</code><p class="muted">Download <a href="72-blind-ssrf-oast.project.json" download="project.json">project.json</a> into a fresh project directory, then launch <code class="inline">NullockApp --project=&lt;absolute-directory&gt;</code>. Start the lab separately from a source checkout. Starting app.py does not load the preset. Review scope before following the walkthrough.</p></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>POST /webhook/register {url} and POST /webhook/trigger {id} always answer {&quot;status&quot;:&quot;queued&quot;} no matter what happens to the fetch -- unlike Lab 05&#x27;s /fetch, nothing here ever tells you if the request succeeded, failed, or what it got back.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>You need an out-of-band listener to prove the fetch fired at all. Register a webhook pointed at an OAST callback URL (or this lab&#x27;s own /attacker/sink/&lt;label&gt; stand-in), trigger it, then poll for the hit instead of trusting the trigger response.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Once you&#x27;ve confirmed blind SSRF works, register a webhook pointed at http://127.0.0.1:5072/internal/admin/rotate-keys and trigger it -- still just {&quot;status&quot;:&quot;queued&quot;} back, but GET /flag?id=&lt;that id&gt; shows the out-of-band record that it actually reached the internal action.</p></details></div>
 
@@ -62,7 +62,7 @@ python labs/72-blind-ssrf-oast/app.py
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
-    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. Opening the downloaded preset restricts active traffic to the listed localhost endpoints. Changing project scope changes those restrictions.</p>
   </div>
 </main>
 <script>

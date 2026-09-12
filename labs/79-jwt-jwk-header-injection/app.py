@@ -31,7 +31,7 @@ verifier's specific hole surfaces only by reading the header of a real
 token and noticing the extra field.
 
 In Nullock:
-    1. nullock scope add http://localhost:5079/*
+    1. Open this lab's project preset (see labs/README.md).
     2. GET /login -- an RS256 token, header {"alg":"RS256","kid":"prod-2026"}
        (no jwk). GET /admin with it: 403 (role is "user"). Paste it into
        Inspector's JWT TOOLKIT -- ANALYZE lists the asymmetric-algorithm
