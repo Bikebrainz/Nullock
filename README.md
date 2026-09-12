@@ -289,7 +289,7 @@ Command palette    Ctrl/Cmd+K (or the title bar's ⌘K button) fuzzy-searches ev
                     per-binding reset, persisted across restarts
 ```
 
-See [Intruder project workspaces](INTRUDER_WORKSPACE.md) for automatic restoration,
+See [Intruder project workspaces](docs/guides/INTRUDER_WORKSPACE.md) for automatic restoration,
 portable save files, CLI commands and persistence limits in the unreleased build.
 
 ## 30 seconds to first capture
@@ -418,7 +418,7 @@ baseline diff as everything else.
 Requirements: CMake 3.24+, C++20 (MSVC 2022 / GCC 12+ / Clang 15+), **Qt 6.10.3
 with the `qtwebsockets` add-on module**, and the **dev headers** for libnghttp2
 and OpenSSL. The two dev packages are the usual missing piece — install them first
-(full per-platform steps in [`INSTALL.md`](INSTALL.md)):
+(full per-platform steps in [`INSTALL.md`](docs/guides/INSTALL.md)):
 
 ```sh
 # Debian/Ubuntu
@@ -460,7 +460,7 @@ version-compatibility gating — an entry requiring a newer build shows an
 "incompatible" badge with its Install/Update button disabled and the reason
 in the tooltip.
 Full authoring guide, API reference, and the permission model:
-[`EXTENSIONS.md`](EXTENSIONS.md).
+[`EXTENSIONS.md`](docs/guides/EXTENSIONS.md).
 
 ## Security model
 
@@ -476,19 +476,25 @@ To report a vulnerability: [`github.com/Bikebrainz/Nullock/security/advisories`]
 - [x] v2-ship: installers, marketing site, docs portal, crash reporter, update checker, project templates, report builder
 - [ ] v3:
   - [x] HTTP/3 detection — Alt-Svc `h3` readiness probe (`nullock http3`, or the SCANS tab's HTTP/3 detection section); full QUIC client transport still pending a QUIC dependency
-  - [x] code signing + Apple notarization — release CI wired (activates on cert secrets); see [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)
-  - [x] hosted OAST tier — deployable `nullock-oast` server + Docker + [`DEPLOY_OAST.md`](DEPLOY_OAST.md) (you supply the host + DNS)
-  - [ ] team workspaces — **Phase-1 findings-sync server shipped** (`nullock-workspace`, [`DEPLOY_WORKSPACE.md`](DEPLOY_WORKSPACE.md)); design + later phases: [`design/team-workspaces.md`](design/team-workspaces.md)
+  - [x] code signing + Apple notarization — release CI wired (activates on cert secrets); see [`RELEASE_SIGNING.md`](docs/guides/RELEASE_SIGNING.md)
+  - [x] hosted OAST tier — deployable `nullock-oast` server + Docker + [`DEPLOY_OAST.md`](docs/guides/DEPLOY_OAST.md) (you supply the host + DNS)
+  - [ ] team workspaces — **Phase-1 findings-sync server shipped** (`nullock-workspace`, [`DEPLOY_WORKSPACE.md`](docs/guides/DEPLOY_WORKSPACE.md)); design + later phases: [`design/team-workspaces.md`](docs/design/team-workspaces.md)
 - [ ] v4:
   - [x] Web Security Academy clone — **89/50 labs** under [`labs/`](labs/) (past the original goal, still growing)
-  - [ ] enterprise SSO — design: [`design/enterprise-sso.md`](design/enterprise-sso.md)
+  - [ ] enterprise SSO — design: [`design/enterprise-sso.md`](docs/design/enterprise-sso.md)
   - [ ] SOC2 (organizational/audit process)
+
+## Repository guide
+
+Start with the [documentation index](docs/README.md) for installation, usage,
+deployment, and design guides. The [source layout](CONTRIBUTING.md#layout) explains
+where application code, tests, browser assets, and maintenance tools belong.
 
 ## Contributing
 
 PRs welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for build/test setup and
 the patterns for adding a scanner, lab, or extension, and
-[`INSTALL.md`](INSTALL.md) for per-platform install/build. Read
+[`INSTALL.md`](docs/guides/INSTALL.md) for per-platform install/build. Read
 [`SECURITY.md`](SECURITY.md) for the threat model first if you're touching the
 proxy or control server. Changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 

@@ -1,6 +1,6 @@
 # Packaging Nullock
 
-Build with Qt 6.10.3, CMake 3.24 or newer, and the dependencies in [INSTALL.md](../INSTALL.md). The package version comes from the root CMake project. Always test an installed tree before distributing an artifact.
+Build with Qt 6.10.3, CMake 3.24 or newer, and the dependencies in [INSTALL.md](../docs/guides/INSTALL.md). The package version comes from the root CMake project. Always test an installed tree before distributing an artifact.
 
 ## Windows
 
@@ -53,7 +53,7 @@ The release workflow signs the fully staged app when signing credentials are con
 
 ## Release checks
 
-The release workflow creates a **draft** only when all three platform jobs succeed. Each validates its staged runtime first. Signing remains optional; see [RELEASE_SIGNING.md](../RELEASE_SIGNING.md). Review actual artifacts and checksums before publication.
+The release workflow creates a **draft** only when all three platform jobs succeed. Each validates its staged runtime first. Signing remains optional; see [RELEASE_SIGNING.md](../docs/guides/RELEASE_SIGNING.md). Review actual artifacts and checksums before publication.
 
 `NULLOCK_DEPLOY_RUNTIME=OFF` is reserved for environments that provide their own Qt deployment. The Dockerfile uses it because its runtime stage explicitly copies Qt libraries and plugins. CI exercises that container's authenticated API and UI, including certificate initialization and graceful shutdown.
 

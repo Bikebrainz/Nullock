@@ -40,7 +40,7 @@ for the runtime baseline.
   - **Windows:** `vcpkg install nghttp2:x64-windows openssl:x64-windows`; the build deploys the OpenSSL CLI and Qt runtime.
 
 ### Windows (MSVC)
-Use the VS-bundled CMake (see [`CONTRIBUTING.md`](CONTRIBUTING.md)):
+Use the VS-bundled CMake (see [`CONTRIBUTING.md`](../../CONTRIBUTING.md)):
 ```cmd
 cmake -B build -G "Visual Studio 17 2022" -A x64 ^
   -DNULLOCK_NGHTTP2_ROOT="C:/vcpkg/installed/x64-windows" ^
@@ -49,7 +49,7 @@ cmake --build build --config Release --target NullockApp
 ```
 The app lands at `build\Src\App\Release\NullockApp.exe`.
 Its browser assets and runtime dependencies are deployed alongside the build.
-See [packaging](packaging/README.md) to create and validate an installer.
+See [packaging](../../packaging/README.md) to create and validate an installer.
 
 ### Linux / macOS
 ```sh

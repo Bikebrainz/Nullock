@@ -1,6 +1,6 @@
 # Deploying a team workspace (findings sync)
 
-`nullock-workspace` is the Phase-1 MVP of [design/team-workspaces.md](design/team-workspaces.md):
+`nullock-workspace` is the Phase-1 MVP of [design/team-workspaces.md](../design/team-workspaces.md):
 a small, self-hostable server that lets several operators share an engagement's
 **findings**. Clients push their local findings and pull teammates' deltas; the
 server merges by the same finding identity key the desktop app uses for
@@ -15,7 +15,7 @@ run it on. The engineering is built.
 | Area | MVP | Deferred to |
 | --- | --- | --- |
 | Storage | SQLite (one file) | Postgres adapter (design phase 3) |
-| Auth | one shared bearer key | per-user OIDC/SSO + roles ([enterprise-sso.md](design/enterprise-sso.md)) |
+| Auth | one shared bearer key | per-user OIDC/SSO + roles ([enterprise-sso.md](../design/enterprise-sso.md)) |
 | Sync | findings push/pull, last-write-wins by identity key, monotonic seq | comments/assignment, shared history, real-time push (phase 2-3) |
 
 ## Configuration (environment)
