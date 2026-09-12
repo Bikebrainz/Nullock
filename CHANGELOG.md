@@ -11,6 +11,8 @@ developer-facing record.
 ## [Unreleased]
 
 ### Repository organization
+- Separate four historical manual verification scripts into `scripts/legacy/`,
+  preserving their contents and documenting the current test entry points.
 - Validate tracked Markdown destinations alongside website links in CI, including
   case-sensitive paths and links to files missing from Git. Index the maintenance
   tools and distinguish current regression checks from historical manual scripts.
