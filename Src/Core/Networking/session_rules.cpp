@@ -1,4 +1,5 @@
 #include "session_rules.hpp"
+#include <QScopeGuard>
 #include "session_rules_logic.hpp"
 
 #include <QDateTime>
@@ -179,17 +180,25 @@ QString SessionRules::substitute(const QString &templ,
 }
 
 void SessionRules::applyToResponse(const Nullock::Proxy::HttpRequest &req,
-                                   const Nullock::Proxy::HttpResponse &resp) {
-    // Session validity: a logged-out response for a macro's host triggers an async
-    // re-auth. Runs first + independent of extraction, so it fires even when no
-    // extraction rule matches this response.
-    maybeReauth(req.host, resp);
+                                   const Nullock::Proxy::HttpResponse &resp, bool synchronousReauth) {
+    // Refresh after extraction, including early returns. An expired response's
+    // token must never overwrite the fresh token acquired by the login macro.
+    const auto refreshAfterExtraction = qScopeGuard([&] { maybeReauth(req.host, resp, synchronousReauth); });
 
     QList<SessionRule> rs;
+    QList<SessionMacro> ms;
     {
         QMutexLocker lk(&m_mutex);
         rs = m_rules;
+        ms = m_macros;
     }
+    // Responses from requests that used an expired session can arrive after a
+    // parallel request refreshed it. Never let those older tokens overwrite the
+    // new session while the refresh gate/cooldown suppresses another login.
+    const auto bodyText = QString::fromUtf8(resp.bodyForInspection().left(64 * 1024));
+    for (const auto &macro : ms)
+        if (macro.sessionHost == req.host && SessionRulesLogic::responseIsLoggedOut(
+                resp.statusCode, bodyText, macro.loggedOutStatus, macro.loggedOutBodyRegex)) return;
     if (rs.isEmpty()) return;
 
     QHash<QString, QString> newVars;
@@ -214,7 +223,7 @@ void SessionRules::applyToResponse(const Nullock::Proxy::HttpRequest &req,
                 }
                 break;
             case SessionRule::ExtractFromJsonPath:
-                val = jsonPathGet(resp.body, r.extractKey);
+                val = jsonPathGet(resp.bodyForInspection(), r.extractKey);
                 break;
             case SessionRule::ExtractFromRegex: {
                 QRegularExpression rx(r.extractKey,
@@ -222,7 +231,7 @@ void SessionRules::applyToResponse(const Nullock::Proxy::HttpRequest &req,
                 if (!rx.isValid()) break;
                 // Cap the body we scan -- regex against a 10 MB JSON
                 // payload is a real-world foot-gun.
-                const QByteArray buf = resp.body.left(1 * 1024 * 1024);
+                const QByteArray buf = resp.bodyForInspection().left(1 * 1024 * 1024);
                 auto m = rx.match(QString::fromUtf8(buf));
                 if (m.hasMatch()) val = firstCapture(m);   // first PARTICIPATING group
                 break;
@@ -328,16 +337,11 @@ bool SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
                 break;
             }
             case SessionRule::InjectIntoBody: {
-                // Replace {{var}} in body, or append "&k=v" to a form body.
+                // Replace placeholders or upsert a form field, removing stale duplicates.
                 const QString contentType = findHeader(req.headers, "Content-Type");
                 if (contentType.startsWith("application/x-www-form-urlencoded", Qt::CaseInsensitive)) {
-                    QByteArray b = req.body;
-                    if (!b.isEmpty() && !b.endsWith('&')) b.append('&');
-                    b.append(QUrl::toPercentEncoding(r.injectKey));
-                    b.append('=');
-                    b.append(QUrl::toPercentEncoding(value));
-                    req.body = b;
-                    modified = true;   // form param appended -> request changed
+                    const auto body = SessionRulesLogic::upsertFormParameter(req.body, r.injectKey, value);
+                    if (body != req.body) { req.body = body; modified = true; }
                 } else {
                     // JSON / other: replace literal "{{name}}" tokens via the pure,
                     // unit-tested helper (JSON-escapes the value when the body is
@@ -372,10 +376,12 @@ bool SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
 // (method / target / version) + headers + body. Faithfulness of the UNMODIFIED
 // request doesn't matter -- applyToRequestBytes only reserializes when a rule
 // fired, and otherwise sends the original bytes untouched.
-static Nullock::Proxy::HttpRequest parseRawRequest(const QByteArray &raw,
-                                                   const QString &host) {
+Nullock::Proxy::HttpRequest SessionRules::parseRequestBytes(const QByteArray &raw,
+                                                   const QString &host, int port, bool tls) {
     Nullock::Proxy::HttpRequest req;
     req.host = host;
+    req.port = static_cast<quint16>(port);
+    req.tls = tls;
     int sepLen = 4;
     int sep = raw.indexOf("\r\n\r\n");
     if (sep < 0) { sep = raw.indexOf("\n\n"); sepLen = 2; }
@@ -403,7 +409,7 @@ static Nullock::Proxy::HttpRequest parseRawRequest(const QByteArray &raw,
 
 bool SessionRules::applyToRequestBytes(QByteArray &rawRequest, const QString &host,
                                        int tool) const {
-    Nullock::Proxy::HttpRequest req = parseRawRequest(rawRequest, host);
+    Nullock::Proxy::HttpRequest req = parseRequestBytes(rawRequest, host);
     if (!applyToRequest(req, tool)) return false;   // no rule fired -> untouched
     rawRequest = Nullock::Proxy::serializeRequestForOrigin(req);
     return true;
@@ -451,13 +457,13 @@ bool SessionRules::runMacro(const QString &name) {
 }
 
 void SessionRules::maybeReauth(const QString &host,
-                               const Nullock::Proxy::HttpResponse &resp) {
+                               const Nullock::Proxy::HttpResponse &resp, bool synchronousReauth) {
     constexpr qint64 kCooldownMs = 5000;   // never re-auth a host more than ~1x/5s
     QString macroName;
     {
         QMutexLocker lk(&m_mutex);
         if (m_macros.isEmpty()) return;
-        const QString bodyText = QString::fromUtf8(resp.body.left(64 * 1024));
+        const QString bodyText = QString::fromUtf8(resp.bodyForInspection().left(64 * 1024));
         for (const auto &m : m_macros) {
             if (m.sessionHost.isEmpty() || m.sessionHost != host) continue;
             if (m.loggedOutStatus.isEmpty() && m.loggedOutBodyRegex.isEmpty()) continue;
@@ -478,11 +484,16 @@ void SessionRules::maybeReauth(const QString &host,
     // requests use ChainRunner's client (not the proxy), so they never re-enter
     // applyToResponse -- no re-auth loop from the macro itself.
     const QString hostCopy = host;
-    (void)QtConcurrent::run([this, macroName, hostCopy]() {
+    auto refresh = [this, macroName, hostCopy]() {
         runMacro(macroName);
         QMutexLocker lk(&m_mutex);
         m_reauthInFlight.remove(hostCopy);
-    });
+    };
+    // Scanner loops refresh in their current worker, before its next request.
+    // Never replay an expired request automatically: it may mutate target state.
+    // Proxy traffic stays asynchronous; the host gate and cooldown prevent loops.
+    if (synchronousReauth) refresh();
+    else (void)QtConcurrent::run(std::move(refresh));
 }
 
 } // namespace Nullock::Core

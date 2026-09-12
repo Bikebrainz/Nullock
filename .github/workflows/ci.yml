@@ -150,6 +150,8 @@ jobs:
         run: python scripts/intruder_workspace_regression.py build/Src/App/Release/NullockApp.exe
       - name: outbound scope regression
         run: python scripts/outbound_scope_regression.py build/Src/App/Release/NullockApp.exe
+      - name: authenticated scanner regression
+        run: python scripts/scanner_sessions_regression.py build/Src/App/Release/NullockApp.exe
       - name: reporting integration
         run: ./scripts/integration_smoke.ps1 -exe build/Src/App/Release/NullockApp.exe
       - name: install browser test dependencies
@@ -252,6 +254,7 @@ jobs:
           python3 scripts/annotations_regression.py "$APP"
           python3 scripts/intruder_workspace_regression.py "$APP"
           python3 scripts/outbound_scope_regression.py "$APP"
+          python3 scripts/scanner_sessions_regression.py "$APP"
       - name: build and verify Linux packages
         run: |
           cpack --config build/CPackConfig.cmake -G 'DEB;RPM;TGZ' -B packages
@@ -306,6 +309,7 @@ jobs:
           python3 scripts/annotations_regression.py "$APP"
           python3 scripts/intruder_workspace_regression.py "$APP"
           python3 scripts/outbound_scope_regression.py "$APP"
+          python3 scripts/scanner_sessions_regression.py "$APP"
       - name: build and verify macOS disk image
         run: |
           ln -s /Applications stage/Applications

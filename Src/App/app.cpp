@@ -1186,6 +1186,7 @@ int main(int argc, char *argv[]) {
     // #1 day-driver delta against Burp before this landed.
     Nullock::Core::SessionRules sessionRules;
     wiring.sessionRules = &sessionRules;
+    const Nullock::Core::ScannerSessionRegistration scannerSessions(&sessionRules, &sessions);
     // Sequencer live-capture engine (background token-harvest loop). Stateless
     // w.r.t. other engines -- the control endpoint feeds it the scope gate.
     Nullock::Core::SequencerCapture sequencerCapture;
@@ -1573,6 +1574,7 @@ int main(int argc, char *argv[]) {
     auto stopWorkers = [&] {
         controlServer.stop();
         crawler.stop();
+        sequencerCapture.stop();
         intruder.stop();
         portScanner.stop();
         // The proxy's per-connection QThreads are NOT QtConcurrent tasks, so

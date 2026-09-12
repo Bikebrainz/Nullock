@@ -189,7 +189,7 @@ private:
     QString            autoTabName(const QString &host, const QString &request) const;
 
     Nullock::FrontEnd::ProxyModel *m_model;
-    HttpClient m_client;
+    HttpClient m_client{nullptr, HttpClient::Purpose::Engagement};
 
     QList<RepeaterTab> m_tabs;
     int                m_active = 0;

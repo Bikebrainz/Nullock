@@ -3281,7 +3281,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         const QByteArray bytes =
                             Nullock::Proxy::serializeRequestForOrigin(r);
 
-                        Nullock::Core::HttpClient client;
+                        Nullock::Core::HttpClient client(nullptr, Nullock::Core::HttpClient::Purpose::Engagement);
                         const auto result = client.send(r.host,
                                                         static_cast<quint16>(r.port),
                                                         useTls, bytes);
@@ -4234,7 +4234,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             return okJson({{ "ok", false },
                            { "error", "no payloads -- supply payloadSets" }});
 
-        Nullock::Core::HttpClient client;
+        Nullock::Core::HttpClient client(nullptr, Nullock::Core::HttpClient::Purpose::Engagement);
         QJsonArray results;
         for (const QStringList &combo : combos) {
             QString req = IE::applyPayloads(templ, combo);
@@ -5494,7 +5494,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (ids.isEmpty())
             return okJson({{ "ok", false }, { "error", "identities[] required" }});
 
-        Nullock::Core::HttpClient client;
+        // Each identity carries explicit credentials; scanner session rules must
+        // not replace them and collapse the comparison into one account.
+        Nullock::Core::HttpClient client(nullptr, Nullock::Core::HttpClient::Purpose::Engagement);
         QJsonArray results;
         for (const QJsonValue &iv : ids) {
             const QJsonObject id = iv.toObject();

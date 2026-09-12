@@ -153,10 +153,12 @@ public:
     // parse `rawRequest`, apply the rules scoped to `tool`, and reserialize INTO
     // rawRequest ONLY if a rule fired -- so a request no rule touches goes on the
     // wire byte-for-byte (raw fidelity preserved). Returns true if it changed.
+    static Nullock::Proxy::HttpRequest parseRequestBytes(const QByteArray &raw,
+        const QString &host, int port = 80, bool tls = false);
     bool applyToRequestBytes(QByteArray &rawRequest, const QString &host,
                              int tool) const;
     void applyToResponse(const Nullock::Proxy::HttpRequest &req,
-                         const Nullock::Proxy::HttpResponse &resp);
+                         const Nullock::Proxy::HttpResponse &resp, bool synchronousReauth = false);
 
     // Wipe variable bag (engagement isolation -- wired to historyShouldClear).
 public slots:
@@ -177,7 +179,7 @@ private:
     // Auto re-auth: if a macro for `host` declares a logged-out condition this
     // response matches, launch an async re-run (loop-guarded). Called from
     // applyToResponse.
-    void   maybeReauth(const QString &host, const Nullock::Proxy::HttpResponse &resp);
+    void   maybeReauth(const QString &host, const Nullock::Proxy::HttpResponse &resp, bool synchronousReauth = false);
 
     mutable QMutex                m_mutex;
     QList<SessionRule>            m_rules;

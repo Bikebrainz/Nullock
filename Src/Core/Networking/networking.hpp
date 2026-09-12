@@ -9,6 +9,16 @@
 #include <QString>
 
 namespace Nullock::Core {
+class SessionRules;
+class SessionManager;
+// App-owned registration, removed after workers drain and before sessions die.
+class ScannerSessionRegistration {
+public:
+    ScannerSessionRegistration(SessionRules *rules, SessionManager *sessions);
+    ~ScannerSessionRegistration();
+    ScannerSessionRegistration(const ScannerSessionRegistration &) = delete;
+    ScannerSessionRegistration &operator=(const ScannerSessionRegistration &) = delete;
+};
 
 // Synchronous one-shot HTTP/HTTPS client. Given a raw HTTP request body
 // (request line + headers + body, CRLF-terminated) plus a host/port/TLS
@@ -18,8 +28,8 @@ namespace Nullock::Core {
 class HttpClient : public QObject {
     Q_OBJECT
 public:
-    enum class Purpose { Engagement, ApplicationService };
-    explicit HttpClient(QObject *parent = nullptr, Purpose purpose = Purpose::Engagement);
+    enum class Purpose { Scanner, Engagement, ApplicationService };
+    explicit HttpClient(QObject *parent = nullptr, Purpose purpose = Purpose::Scanner);
 
     struct SendResult {
         bool       ok = false;
@@ -31,6 +41,7 @@ public:
         // read ok/errorMessage/rawResponse/parsed are unaffected.
         SocketOutcome outcome = SocketOutcome::Ok;
         QString    errorMessage;
+        QByteArray requestBytes; // effective request after session rules, for capture/reproduction
         QByteArray rawResponse;  // status line + headers + body, as received
         Nullock::Proxy::HttpResponse parsed;
     };

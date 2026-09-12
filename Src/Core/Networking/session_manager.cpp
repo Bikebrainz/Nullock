@@ -154,6 +154,7 @@ void SessionManager::injectInto(Nullock::Proxy::HttpRequest &req) const {
         else { pos[c.name] = ordered.size(); ordered.append({ c.name, c.value }); }
     }
 
+    if (ordered.isEmpty() && existingIdx < 0) return;
     QStringList combined;
     for (const auto &kv : ordered) combined.append(kv.first + "=" + kv.second);
     const QString joined = combined.join("; ");

@@ -663,7 +663,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
     auto fireOne = [this, &inFlight, templateCopy, templateLatin1, host, port, useTls, rules,
                     grepMatch, grepReflection, grepExtract, retries,
                     followPolicy, followCookies, inScope](int row, const QStringList &combo) -> QString {
-        HttpClient client;
+        HttpClient client(nullptr, HttpClient::Purpose::Engagement);
 
         QString req = IE::applyPayloads(templateCopy, applyRulesToCombo(combo, rules));
 
@@ -894,7 +894,7 @@ bool Intruder::resend(int row) {
                              portCopy, tlsCopy, grepMatchCopy, grepReflectionCopy,
                              grepExtractCopy, followPolicyCopy, followCookiesCopy,
                              inScopeCopy]() {
-        HttpClient client;
+        HttpClient client(nullptr, HttpClient::Purpose::Engagement);
         QString req = IE::applyPayloads(templateCopy, combo);
 
         QElapsedTimer t; t.start();

@@ -2,6 +2,7 @@
 
 #include "crawler_logic.hpp"
 #include "networking.hpp"
+#include "session_rules.hpp"
 
 #include <QDateTime>
 #include <QThread>
@@ -144,17 +145,8 @@ void Crawler::crawlOne(const PendingUrl &u) {
     if (!res.ok) return;
 
     // Surface as a captured row so scanner / history pick it up.
-    Nullock::Proxy::HttpRequest req;
+    auto req = SessionRules::parseRequestBytes(res.requestBytes, host, port, useTls);
     req.timestamp = QDateTime::currentDateTime();
-    req.method = "GET";
-    req.host   = host;
-    req.port   = port;
-    req.path   = p;
-    req.target = p;
-    req.httpVersion = "HTTP/1.1";
-    req.headers.append(qMakePair(QStringLiteral("Host"), host));
-    req.headers.append(qMakePair(QStringLiteral("User-Agent"),
-                                 QStringLiteral("nullock-crawler/1.0")));
     emit entryLoaded(req, res.parsed);
 
     // Don't follow further if max depth reached.

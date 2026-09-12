@@ -89,6 +89,8 @@ bool ruleAppliesToTool(int toolsMask, int tool);
 bool responseIsLoggedOut(int status, const QString &bodyText,
                          const QString &statusList, const QString &bodyRegex);
 
+QByteArray upsertFormParameter(const QByteArray &body, const QString &key, const QString &value);
+
 // Body-inject transform for the JSON/other (non-form) content-type path: replace
 // every literal "{{injectKey}}" (and "{{variable}}" when variable is non-empty)
 // in `body` with `value` (JSON-escaped when isJson). Returns the transformed

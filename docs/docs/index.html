@@ -44,6 +44,7 @@
       <div class="ds-label">Reference</div>
       <a href="#cli" class="ds-link">CLI</a>
       <a href="#project-notes" class="ds-link">Project notes (unreleased)</a>
+      <a href="#authenticated-scans" class="ds-link">Authenticated HTTP scans (unreleased)</a>
       <a href="#extensions" class="ds-link">Extensions</a>
     </div>
     <div class="ds-group">
@@ -115,6 +116,18 @@ nullock history-note 42 --comment ''
 nullock history-note 42 --clear</code></pre></div>
       <p>The CLI needs jq and a running app. <code>GET /api/history/annotations</code> returns notes, their revision and the history generation. <code>POST /api/history/annotation</code> accepts a row ID, that generation, and a comment and/or colour. Unspecified fields stay unchanged. Stale generations are rejected with HTTP 409; failed saves keep the previous note.</p>
       <p>Comments are limited to 4096 UTF-16 code units and the annotation map to 1 MiB. Colours are red, orange, yellow, green, cyan, blue, purple, pink and gray; an empty string clears a field. Clearing history clears its notes too.</p>
+    </section>
+
+    <section id="authenticated-scans" class="doc-sec">
+      <h2 class="h2-section">Authenticated HTTP scans (unreleased)</h2>
+      <ol class="steps">
+        <li>Set the engagement scope first. Advanced rules can limit the protocol, port and path. Redirects and generated scan requests stay inside those limits.</li>
+        <li>Capture a signed-in request through the proxy. In Sessions, enable cookie injection for the target if scans should reuse its cookie jar. Secure cookies remain restricted to HTTPS, and cookie paths are respected.</li>
+        <li>For CSRF or header tokens, add a session-handling rule and select Scanner in its tool scope. Choose the response field to extract and the request header, cookie, form field, JSON placeholder or query parameter to update.</li>
+        <li>Record the HTTP login steps as a named login macro and configure its logged-out status or body condition. An expired scan response triggers that macro before the same scan loop continues. The expired request is not automatically replayed.</li>
+        <li>Check the captured request and response before expanding the scan. Crawler history preserves the authentication headers actually sent. Multi-user authorization tests use each identity's supplied credentials.</li>
+      </ol>
+      <p>Login macro requests must also be in scope. A login flow that requires browser JavaScript must be completed in a browser; the macro runner replays HTTP requests.</p>
     </section>
 
     <section id="cli" class="doc-sec">

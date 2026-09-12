@@ -33,6 +33,11 @@ QString re(const QString &pattern, const QString &subject) {
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
+    chk("form refresh replaces stale duplicate token and preserves unrelated encoding",
+        upsertFormParameter("csrf=old&keep=a%2Bb&%63srf=duplicate", "csrf", "new token") == "csrf=new%20token&keep=a%2Bb");
+    chk("form refresh appends missing field", upsertFormParameter("keep=x", "csrf", "&=") == "keep=x&csrf=%26%3D");
+    chk("form refresh is idempotent", upsertFormParameter("csrf=new&keep=x", "csrf", "new") == "csrf=new&keep=x");
+
 
     // ===== sanitizeHeaderValue (CRLF injection / smuggling) =============
     chk("header: a clean token is unchanged", sanitizeHeaderValue("Bearer abc.def") == "Bearer abc.def");
