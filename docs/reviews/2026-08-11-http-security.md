@@ -1,7 +1,13 @@
-> **Triage status (2026-08-12):** ingested into `main`; source PR #1 closed.
+> **Triage status (2026-09-12):** source PR #1 closed.
 > **HIGH #1 FIXED** (`abb6559`, header-audit redirect follower is same-origin-only) and
 > **HIGH #2 FIXED** (`a5b3cb6`, JWT probe strips secondary credentials on both shots).
-> Findings **#3–#11 (MEDIUM/LOW) remain open** and are tracked here for follow-up.
+> **MEDIUM #3 and #4 FIXED** ([PR #16](https://github.com/Bikebrainz/Nullock/pull/16)): confirmation requires cookie-only
+> credentials and a transported credential-free 401/403 denial; captured
+> handshake headers are regenerated. Browser cookie delivery still requires
+> verification in the target's context. Regression coverage lives in
+> [the WebSocket unit suite](../../Tests/ws_probe/ws_probe_test.cpp) and
+> [the active-probe smoke fixtures](../../scripts/probe_smoke.sh).
+> Findings **#5–#11 remain recorded for follow-up** against the current source.
 
 # Security review — HTTP-header / token cluster (`Src/Core/Networking`)
 
