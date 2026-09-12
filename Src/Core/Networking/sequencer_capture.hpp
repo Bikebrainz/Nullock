@@ -78,6 +78,10 @@ public:
     QJsonObject snapshot() const;
     // The harvested corpus, fetched once on completion. Mutex-guarded copy.
     QStringList tokens() const;
+    QJsonObject exportState() const;
+    void importState(const QJsonObject &state);
+    bool patchDraft(const QJsonObject &patch, qint64 textRevision, QString *error);
+    bool appendText(const QString &text, QString *error);
 
 signals:
     void runningChanged();
@@ -87,6 +91,10 @@ private:
     void run(Request req);          // worker body -- runs on a QtConcurrent pool thread
     void interruptibleSleep(int ms);
 
+    QJsonObject m_draft;
+    qsizetype m_tokenCharacters = 0;
+    qint64 m_revision = 0;
+    qint64 m_textRevision = 0;
     mutable QMutex m_mutex;         // guards m_host / m_error / m_tokens / m_cookieNames
     QAtomicInt m_running         { 0 };
     QAtomicInt m_stop            { 0 };
