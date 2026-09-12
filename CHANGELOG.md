@@ -10,6 +10,11 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Documentation
+- Refresh project copy and historical review references, and replace temporary
+  roadmap branch labels with verified commit IDs. Triage and payload-generation
+  functionality are unchanged.
+
 ### Repository organization
 - Separate four historical manual verification scripts into `scripts/legacy/`,
   preserving their contents and documenting the current test entry points.
@@ -1567,7 +1572,7 @@ developer-facing record.
 ## [3.8.0] — 2026-08-20
 
 This release folds in a large security-and-correctness pass: a whole-codebase
-multi-agent security review (16 findings, from a CRITICAL CI-action fix down to
+security review (16 findings, from a CRITICAL CI-action fix down to
 LOW hardening), two more dead-detector bugs surfaced and fixed by a per-module
 detector audit, and mutation-proven regression coverage locked across the passive
 scanner's full detector set plus every active-scan probe module. See the
@@ -2537,7 +2542,7 @@ per-entry notes below.
   origin's verdicts to the original URL. It now requires an exact
   scheme+host+port match before following and never carries credentials across
   an origin change (`isSameOriginRedirect`, mutation-tested). Fixes finding #1
-  of the multi-agent `Src/Core/Networking` security review.
+  of the `Src/Core/Networking` security review.
 - **JWT probe no longer reports false signature/algorithm bypasses on
   cookie-auth endpoints.** It stripped secondary credentials only on the
   no-token calibration shot, so a forged-token shot kept a carried session

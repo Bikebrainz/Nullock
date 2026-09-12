@@ -137,5 +137,5 @@ SESSION_TTL_SECONDS  3600
 2. OIDC-only at launch, or is SAML a hard requirement for the target buyer?
 3. Approve adding **OpenSSL/libcrypto as a build dependency** for RS256/JWKS
    (recommended) vs shelling out to the `openssl` exe (already done for certs).
-4. Self-host only vs an Anthropic-hosted tier (changes secret management + the
+4. Self-host only vs a hosted tier (changes secret management + the
    multi-tenant session model).
