@@ -92,6 +92,10 @@ def main():
         api('/api/repeater/set', {'host':'127.0.0.1','port':mock.server_port,'tls':False,
             'request':request,'requestEncoding':'utf8','followRedirects':3,'processCookies':True})
         api('/api/repeater/send', {})
+        deadline = time.monotonic() + 30
+        while api('/api/snapshot')['repeater']['busy']:
+            assert time.monotonic() < deadline, 'Repeater timed out'
+            time.sleep(.02)
         api('/api/snapshot')
 
     process = None
@@ -221,11 +225,19 @@ def main():
             api('/api/repeater/tab/addFromHistoryId', {'id':1})
             check('binary request has explicit byte encoding', api('/api/snapshot')['repeater']['requestEncoding']=='latin1')
             api('/api/repeater/send', {})
+            deadline = time.monotonic() + 30
+            while api('/api/snapshot')['repeater']['busy']:
+                assert time.monotonic() < deadline, 'Repeater timed out'
+                time.sleep(.02)
             api('/api/snapshot')  # send is queued; wait for its main-thread completion
             check('Repeater sends full unchanged binary body', received[-1][2]==body)
             sent_count = len(received)
             api('/api/repeater/set', {'request':full['rawRequest']+'\u20ac'})
             api('/api/repeater/send', {})
+            deadline = time.monotonic() + 30
+            while api('/api/snapshot')['repeater']['busy']:
+                assert time.monotonic() < deadline, 'Repeater timed out'
+                time.sleep(.02)
             check('Repeater rejects characters outside the selected byte encoding',
                   'outside Latin-1' in api('/api/snapshot')['repeater']['response'] and len(received)==sent_count)
             api('/api/intruder/from-history', {'id':1})

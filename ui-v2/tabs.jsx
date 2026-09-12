@@ -1533,7 +1533,8 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             </div>
           )}
         </div>
-        <button className="btn" onClick={() => dispatch({ type: "repeater-clear" })}>CLEAR</button>
+        <button className="btn" disabled={busy} onClick={() => dispatch({ type: "repeater-clear" })}>CLEAR</button>
+        {busy && <button className="btn danger" disabled={rep.cancelling} title="Stops after the current response; no further redirects are sent" onClick={() => NL.actions.repeaterStop()}>{rep.cancelling ? "STOPPING…" : "■ STOP"}</button>}
         <button className="btn primary" onClick={send} disabled={busy}>
           {busy ? "SENDING…" : "▶ SEND"}
         </button>

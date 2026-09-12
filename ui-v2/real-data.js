@@ -28,7 +28,7 @@
     return null;
   }
 
-  function applySnapshot(snap, intruderEpoch = NL._intruderWriteEpoch || 0) {
+  function applySnapshot(snap, intruderEpoch = NL._intruderWriteEpoch || 0, repeaterEpoch = NL._repeaterWriteEpoch || 0) {
     if (!snap) return;
     const boot = snap.bootInfo || {};
     const generation = [snap.instanceId || "", boot.projectDir || boot.project || "", boot.historyGeneration || ""].join(":");
@@ -62,7 +62,9 @@
     NL.rows          = snap.rows          || [];
     NL.sitemap     = snap.sitemap     || [];
     NL.intercepted = snap.intercepted || [];
-    NL.repeater    = snap.repeater    || { host: "", port: 443, tls: true,
+    if (!projectChanged && (NL._repeaterPendingWrites || repeaterEpoch !== (NL._repeaterWriteEpoch || 0))) {
+      NL._seq = 0;
+    } else NL.repeater = snap.repeater || { host: "", port: 443, tls: true,
                                             request: "", response: "",
                                             statusLine: "", autoContentLength: true };
     // A poll started before an edit (or while a write is queued) must not
@@ -320,6 +322,35 @@
       NL._seq = 0;
     });
   }
+  let repeaterWrites = Promise.resolve();
+  function writeRepeater(path, payload = {}, optimistic = false) {
+    const generation = NL._generation;
+    const historyGeneration = NL.bootInfo.historyGeneration;
+    NL._repeaterWriteEpoch = (NL._repeaterWriteEpoch || 0) + 1;
+    NL._repeaterPendingWrites = (NL._repeaterPendingWrites || 0) + 1;
+    if (optimistic) NL.repeater = {...NL.repeater, ...payload};
+    const write = async () => {
+      if (generation !== NL._generation) throw new Error("Project history changed; retry in the current project");
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await post(path, {...payload, historyGeneration}, controller.signal);
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || "Could not update Repeater");
+        }
+        return response;
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+    const queued = repeaterWrites.then(write);
+    repeaterWrites = queued.catch(() => {});
+    return queued.finally(() => {
+      NL._repeaterPendingWrites--;
+      NL._seq = 0;
+    });
+  }
   NL.actions = {
     annotateHistory(id, patch) {
       const generation = NL._generation;
@@ -365,24 +396,25 @@
       if (!response.ok || result.ok === false) throw new Error(result.error || "Could not save scope rules");
       return result;
     },
-    repeaterSet(payload)    { return post("/api/repeater/set",     payload); },
-    repeaterSend()          { return post("/api/repeater/send"); },
-    repeaterClear()         { return post("/api/repeater/clear"); },
-    repeaterTabAdd(name)            { return post("/api/repeater/tab/add", { name }); },
-    repeaterTabAddFromHistory(row)  { return post("/api/repeater/tab/addFromHistory", { row }); },
+    repeaterSet(payload)    { return writeRepeater("/api/repeater/set", payload, true); },
+    repeaterSend()          { return writeRepeater("/api/repeater/send"); },
+    repeaterStop()          { return writeRepeater("/api/repeater/stop"); },
+    repeaterClear()         { return writeRepeater("/api/repeater/clear"); },
+    repeaterTabAdd(name)            { return writeRepeater("/api/repeater/tab/add", { name }); },
+    repeaterTabAddFromHistory(row)  { return writeRepeater("/api/repeater/tab/addFromHistory", { row }); },
     // Eviction-safe variant: resolves the source row by its STABLE history id
     // (not a live window index), so "send to Repeater" still loads the right
     // request after the in-memory history window has evicted older rows.
     // Prefer this over repeaterTabAddFromHistory everywhere a row.id is held.
-    repeaterTabAddFromHistoryId(id) { return post("/api/repeater/tab/addFromHistoryId", { id }); },
-    repeaterTabClose(index)         { return post("/api/repeater/tab/close",    { index }); },
-    repeaterTabActivate(index)      { return post("/api/repeater/tab/activate", { index }); },
-    repeaterTabRename(index, name)  { return post("/api/repeater/tab/rename",   { index, name }); },
-    repeaterTabDuplicate(index)     { return post("/api/repeater/tab/duplicate",{ index }); },
-    repeaterTabNotes(index, notes)  { return post("/api/repeater/tab/notes",   { index, notes }); },
+    repeaterTabAddFromHistoryId(id) { return writeRepeater("/api/repeater/tab/addFromHistoryId", { id }); },
+    repeaterTabClose(index)         { return writeRepeater("/api/repeater/tab/close",    { index }); },
+    repeaterTabActivate(index)      { return writeRepeater("/api/repeater/tab/activate", { index }); },
+    repeaterTabRename(index, name)  { return writeRepeater("/api/repeater/tab/rename",   { index, name }); },
+    repeaterTabDuplicate(index)     { return writeRepeater("/api/repeater/tab/duplicate",{ index }); },
+    repeaterTabNotes(index, notes)  { return writeRepeater("/api/repeater/tab/notes",   { index, notes }); },
     // Load a prior send (index into the ACTIVE tab's history, newest last) back
     // into that tab's request/response for review or re-send (< > navigation).
-    repeaterHistoryLoad(index)      { return post("/api/repeater/history/load", { index }); },
+    repeaterHistoryLoad(index)      { return writeRepeater("/api/repeater/history/load", { index }); },
     // GET search; returns { hits: [{id, where, excerpts:[...]}], count }
     search(q, where = "both", limit = 200) {
       const url = "/api/search?q=" + encodeURIComponent(q || "")
@@ -946,6 +978,7 @@
     if (polling) return;
     polling = true;
     const intruderEpoch = NL._intruderWriteEpoch || 0;
+    const repeaterEpoch = NL._repeaterWriteEpoch || 0;
     try {
       const xhr = new XMLHttpRequest();
       xhr.open("GET", "/api/snapshot?since=" + NL._seq + "&instance=" + encodeURIComponent(NL._instanceId || ""), true);
@@ -959,7 +992,7 @@
           const snap = JSON.parse(xhr.responseText);
           if (!snap.bootInfo) { disconnected(); return; }
           NL._seq = snap.seq || 0;
-          applySnapshot(snap, intruderEpoch);
+          applySnapshot(snap, intruderEpoch, repeaterEpoch);
           window.dispatchEvent(new CustomEvent("nl-update"));
         } catch (e) { disconnected(); }
       };

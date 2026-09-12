@@ -9,6 +9,7 @@
 #include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonValue>
+#include <QtConcurrent/QtConcurrent>
 
 namespace Nullock::Core {
 
@@ -119,6 +120,7 @@ void Repeater::loadFromHistory(int row) {
 }
 
 void Repeater::clear() {
+    if (m_busy) return;
     auto &t = activeTab_();
     t.requestText.clear();
     t.requestLatin1 = false;
@@ -131,6 +133,7 @@ void Repeater::clear() {
 }
 
 void Repeater::clearAll() {
+    if (m_busy) return;
     m_tabs.clear();
     m_tabs.append(makeBlankTab());
     m_active = 0;
@@ -139,8 +142,55 @@ void Repeater::clearAll() {
     emit responseChanged();
 }
 
+Repeater::~Repeater() {
+    cancel();
+    if (m_worker.isRunning()) m_worker.waitForFinished();
+}
+
+void Repeater::cancel() {
+    if (m_cancel) m_cancel->store(true);
+    if (m_busy) emit busyChanged();
+}
+
+void Repeater::sendAsync() {
+    if (m_busy || activeTab_().host.isEmpty() || activeTab_().requestText.isEmpty()) return;
+    const int tabIndex = m_active;
+    const auto tab = activeTab_();
+    const auto rules = m_sessionRules;
+    const auto scope = m_inScope;
+    const bool autoLength = m_autoContentLength, cookies = m_followCookies;
+    const int policy = m_followPolicy;
+    m_cancel = std::make_shared<std::atomic_bool>(false);
+    const auto cancel = m_cancel;
+    m_busy = true; emit busyChanged();
+    m_worker = QtConcurrent::run([this, tabIndex, tab, rules, scope, autoLength, cookies, policy, cancel] {
+        // All sockets and response processing belong to this worker. Only a
+        // copied request/configuration crosses threads; live tabs stay on the UI.
+        Repeater worker(nullptr);
+        worker.m_tabs = {tab}; worker.m_active = 0;
+        worker.m_sessionRules = rules; worker.m_inScope = scope;
+        worker.m_autoContentLength = autoLength; worker.m_followCookies = cookies;
+        worker.m_followPolicy = policy; worker.m_cancel = cancel;
+        worker.send();
+        auto completed = worker.activeTab_();
+        worker.m_cancel.reset();
+        QMetaObject::invokeMethod(this, [this, tabIndex, completed] {
+            // Closing/replacing tabs is disabled while this job runs. Preserve
+            // any request, target or notes edited while awaiting the response.
+            if (tabIndex >= 0 && tabIndex < m_tabs.size()) {
+                auto &target = m_tabs[tabIndex];
+                target.responseText = completed.responseText; target.statusLine = completed.statusLine;
+                target.elapsedMs = completed.elapsedMs; target.responseBytes = completed.responseBytes;
+                target.history = completed.history;
+            }
+            m_busy = false; m_cancel.reset();
+            emit responseChanged(); emit busyChanged(); emit tabsChanged();
+        }, Qt::QueuedConnection);
+    });
+}
+
 void Repeater::send() {
-    if (m_busy) return;
+    if (m_busy || (m_cancel && m_cancel->load())) return;
     auto &t = activeTab_();
     if (t.host.isEmpty() || t.requestText.isEmpty()) return;
 
@@ -196,7 +246,7 @@ void Repeater::send() {
         RL::CookieJar jar;
         QByteArray previousRequest = bytes;
         if (m_followCookies) RL::seedRequestCookies(jar, current, bytes);
-        while (redirectHops < kMaxRedirectHops && result.ok
+        while (redirectHops < kMaxRedirectHops && result.ok && !(m_cancel && m_cancel->load())
                && RL::isRedirectStatus(result.parsed.statusCode)) {
             QString loc;
             for (const auto &h : result.parsed.headers)
@@ -257,6 +307,8 @@ void Repeater::send() {
     if (redirectHops > 0)
         t.statusLine += QString("  [followed %1 redirect%2]")
                             .arg(redirectHops).arg(redirectHops == 1 ? "" : "s");
+
+    if (m_cancel && m_cancel->load()) t.statusLine += "  [stopped after current response]";
 
     // Record this send in the tab's history (newest last), capped so a long
     // session can't grow it unbounded.
@@ -342,6 +394,7 @@ QJsonObject Repeater::exportState() const {
 }
 
 void Repeater::importState(const QJsonObject &state) {
+    if (m_busy) return;
     QList<RepeaterTab> restored;
     for (const QJsonValue &v : state.value("tabs").toArray()) {
         const QJsonObject o = v.toObject();
@@ -415,6 +468,7 @@ int Repeater::addTabFromHistoryById(int id) {
 }
 
 bool Repeater::closeTab(int index) {
+    if (m_busy) return false;
     if (index < 0 || index >= m_tabs.size()) return false;
     // Keep at least one tab around -- if the user closes the last one
     // we replace it with a blank rather than vanishing the panel.

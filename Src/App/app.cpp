@@ -1603,6 +1603,7 @@ int main(int argc, char *argv[]) {
         controlServer.stop();
         crawler.stop();
         sequencerCapture.stop();
+        repeater.cancel();
         intruder.stop();
         portScanner.stop();
         // The proxy's per-connection QThreads are NOT QtConcurrent tasks, so

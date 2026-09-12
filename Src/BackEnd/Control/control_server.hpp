@@ -2,6 +2,7 @@
 
 #include <QHostAddress>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QUuid>
 
@@ -74,6 +75,7 @@ class ControlServer : public QObject {
     Q_OBJECT
 public:
     explicit ControlServer(const Wiring &w, QObject *parent = nullptr);
+    ~ControlServer() override { stop(); }
 
     // Configure the bearer token that gates the API. Empty (default) = auth
     // disabled (loopback + CSRF only). MUST be called before start() when
@@ -94,6 +96,8 @@ private slots:
 
 private:
     void handle(QTcpSocket *socket);
+    QByteArray validateHeaders(const QByteArray &header, QString &method, QString &target, qint64 &contentLength) const;
+    void dispatchRequest(QTcpSocket *socket, const QString &method, const QString &target, const QByteArray &body);
     // ScopeGuard: true if `host` is non-empty and the project marks it out of
     // scope -- so active scans/payloads refuse it. False when no proxy/scope
     // model exists (allow) so headless use is unaffected.
@@ -109,6 +113,8 @@ private:
 
     Wiring     m_wiring;
     QTcpServer *m_server = nullptr;
+    QSet<QTcpSocket *> m_connections;
+    qint64 m_pendingBodyBytes = 0;
     quint64    m_seq = 1;
     const QString m_instanceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString    m_apiToken;              // bearer token; empty = auth disabled

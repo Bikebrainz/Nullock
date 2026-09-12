@@ -12,6 +12,9 @@
 #include <QString>
 
 #include <functional>
+#include <QFuture>
+#include <atomic>
+#include <memory>
 
 namespace Nullock::FrontEnd {
 class ProxyModel;
@@ -97,6 +100,10 @@ public:
     explicit Repeater(Nullock::FrontEnd::ProxyModel *historyModel,
                       QObject *parent = nullptr);
 
+    ~Repeater() override;
+    Q_INVOKABLE void sendAsync();
+    Q_INVOKABLE void cancel();
+    bool cancelling() const { return m_busy && m_cancel && m_cancel->load(); }
     QString host() const         { return activeTab_().host; }
     int     port() const         { return activeTab_().port; }
     bool    useTls() const       { return activeTab_().useTls; }
@@ -189,6 +196,8 @@ private:
     QString            autoTabName(const QString &host, const QString &request) const;
 
     Nullock::FrontEnd::ProxyModel *m_model;
+    QFuture<void> m_worker;
+    std::shared_ptr<std::atomic_bool> m_cancel;
     HttpClient m_client{nullptr, HttpClient::Purpose::Engagement};
 
     QList<RepeaterTab> m_tabs;
