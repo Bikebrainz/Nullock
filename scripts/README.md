@@ -52,11 +52,9 @@ use the fixture setup and environment from CI.
 
 ## Historical manual checks
 
-`redteam_r4_verify.ps1`, `redteam_r5_verify.ps1`,
-`redteam_r4_r5_verify.ps1`, and `validate_v3.ps1` are historical manual checks,
-not current CI entry points. They contain machine-specific executable paths and
-older process/fixture setup. Prefer the maintained checks above; these scripts
-need porting and coverage review before reuse.
+The [legacy archive](legacy/README.md) contains earlier redaction, TLS, and
+endpoint checks. They are retained for coverage review, separate from the
+maintained scripts above, and are not current CI entry points.
 
 Put new automated regressions beside the related maintained script or in
 [`Tests/`](../Tests/). Keep fixture traffic on owned loopback services, accept

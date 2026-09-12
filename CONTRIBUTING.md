@@ -115,9 +115,10 @@ isolated temporary profiles and local fixtures. See `.github/workflows/ci.yml`
 for the platform-specific commands and `scripts/annotations_regression.py`,
 `Tests/ui/annotations_browser_test.cjs` for the project-note workflow checks.
 
-`scripts/integration_smoke.ps1` is the whole-system check (import → CVE
-feed → bridge → reports → ScopeGuard) against one headless instance — the
-reliable go-to over the flakier `scripts/validate_v3.ps1`.
+`scripts/integration_smoke.ps1` is the maintained whole-system check (import → CVE
+feed → bridge → reports → ScopeGuard) against one headless instance. Earlier
+manual scripts are retained in the [legacy archive](scripts/legacy/README.md)
+for coverage review.
 
 `scripts/probe_smoke.sh` is the deterministic **active-probe** regression: it
 drives the headless server against reliable Python `http.server` mocks and
