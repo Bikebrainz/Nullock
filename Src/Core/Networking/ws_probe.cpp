@@ -99,8 +99,9 @@ Result test(const Request &reqIn) {
     result.attackerOrigin = req.attackerOrigin.isEmpty()
         ? QStringLiteral("https://nullock-cswsh.test") : req.attackerOrigin;
 
-    // CSWSH is only EXPLOITABLE when the socket authenticates the victim via an
-    // ambient credential (cookie / HTTP auth) the browser attaches cross-site.
+    // Confirm cookie-gated CSWSH only when the stripped control denies access.
+    // Caller-supplied Authorization or mixed credentials
+    // remain leads because browser-managed authentication was not established.
     const bool authed = hasCredential(req.headers);
 
     // Grade a cross-origin acceptance. A 101 + valid accept alone only proves the
@@ -110,20 +111,20 @@ Result test(const Request &reqIn) {
     // credential STRIPPED (the "authed baseline"): if that no-credential baseline
     // ALSO upgrades, the socket ignores the session, so the cross-origin accept
     // is the expected behaviour of a public WS (a LEAD), not a credentialed
-    // hijack. Only a REFUSED baseline confirms the socket honors the session
+    // hijack. Only a 401/403 baseline confirms the socket honors the session
     // cross-site. Without a supplied credential there's nothing to confirm -> LEAD.
     auto gradeAccepted = [&](const QString &origin) {
         result.isWebSocket = true;
         result.attackerOrigin = origin;
         bool confirmed = false;
+        Shake base;
         if (authed) {
             Request bare = req;
             bare.headers = stripCredentials(req.headers);
-            const Shake base = handshake(bare, origin);   // same Origin, credential removed
+            base = handshake(bare, origin);   // same Origin, credential removed
             result.controlStatus = base.status;           // the no-credential baseline status
-            // Only a baseline that actually RESPONDED and refused the upgrade
-            // confirms a hijack; a transient reconnect failure must NOT (pure,
-            // unit-tested -- see wsConfirmsHijack).
+            // Only a transported 401/403 authentication denial can confirm;
+            // transport failures and generic errors remain inconclusive.
             confirmed = wsConfirmsHijack(base.ok, base.status, base.acceptValid);
         }
         if (confirmed) {
@@ -135,14 +136,25 @@ Result test(const Request &reqIn) {
                               "session cross-site: CSWSH";
         } else {
             result.originNotValidated = true;
-            result.detail = authed
-                ? "upgrade completed cross-origin (Origin " + origin + ") but the SAME handshake "
+            if (authed && base.ok && base.status == 101 && base.acceptValid) {
+                result.detail = "upgrade completed cross-origin (Origin " + origin + ") but the SAME handshake "
                   "without the credential ALSO upgraded -- the socket ignores the session and accepts "
                   "any Origin regardless of authentication; Origin is not validated, but this is not a "
-                  "credentialed hijack (LEAD, not CSWSH)"
-                : "upgrade completed cross-origin (Origin " + origin + ") but NO session credential "
-                  "was supplied -- Origin is not validated; confirm the socket is cookie-gated before "
-                  "treating as CSWSH (a public WS accepting any Origin is expected)";
+                  "credentialed hijack (LEAD, not CSWSH)";
+            } else if (authed) {
+                result.detail = "upgrade completed cross-origin (Origin " + origin
+                    + "), but the credential-free control was inconclusive (status "
+                    + QString::number(base.status) + ")";
+                if (!base.error.isEmpty()) result.detail += ": " + base.error;
+                result.detail += ". No explicit authentication denial was established; "
+                                 "Origin is not validated, but CSWSH is unconfirmed (LEAD).";
+            } else {
+                result.detail = "upgrade completed cross-origin (Origin " + origin
+                    + "), but cookie-only session authentication was not established. "
+                      "Missing cookies or caller-supplied Authorization headers cannot "
+                      "confirm a browser hijack; verify browser-managed authentication "
+                      "before treating this as CSWSH (LEAD).";
+            }
         }
     };
 

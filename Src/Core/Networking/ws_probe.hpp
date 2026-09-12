@@ -1,18 +1,16 @@
 #pragma once
 
-// Cross-Site WebSocket Hijacking (CSWSH, CWE-1385). A WebSocket endpoint that
-// completes the upgrade handshake without validating the Origin header lets any
-// web page the victim visits open an authenticated socket to it (cookies ride
-// along), then read/write on the victim's behalf -- a CSRF that survives
-// SameSite because the WS handshake is a top-level GET.
+// Cross-Site WebSocket Hijacking (CSWSH, CWE-1385). An authenticated WebSocket
+// endpoint that accepts an attacker's Origin can let that page act on the
+// victim's behalf when browser cookie policy permits the session to ride along.
 //
 // The passive scanner already flags a cross-origin 101 it happens to OBSERVE in
 // proxied traffic; this is the ACTIVE probe: it sends a real upgrade handshake
-// carrying an attacker Origin and confirms the bug only when the server returns
-// 101 Switching Protocols AND a correct Sec-WebSocket-Accept (RFC 6455: the
-// base64 SHA-1 of our key + the magic GUID). Requiring a valid accept proves
-// the responder is a genuine WebSocket server, not something that 101s blindly,
-// so the finding is sound. If the attacker Origin is refused, a control
+// carrying an attacker Origin. A valid upgrade requires 101 Switching Protocols
+// AND a correct Sec-WebSocket-Accept (RFC 6455: base64 SHA-1 of our key + the
+// magic GUID). Confirmation also requires cookie-only credentials and a 401/403
+// response to the same handshake without credentials. Browser cookie delivery
+// still needs verification in the target's context. If the Origin is refused, a control
 // handshake (no Origin) tells apart "endpoint validates Origin" (good posture)
 // from "not a WebSocket endpoint".
 
@@ -35,13 +33,12 @@ struct Request {
 
 struct Result {
     bool    isWebSocket        = false;  // a valid handshake (101 + correct accept) was seen
-    bool    crossOriginAccepted = false; // CONFIRMED CSWSH: a session credential was supplied
-                                         // AND the cross-origin handshake still completed
-    bool    originNotValidated  = false; // LEAD: cross-origin handshake completed but NO
-                                         // credential was supplied -- Origin isn't validated,
-                                         // but a public/unauthenticated WS accepting any
-                                         // Origin is expected, not a hijack. Confirm the
-                                         // socket is cookie-gated before treating as CSWSH.
+    bool    crossOriginAccepted = false; // CONFIRMED CSWSH: cookie-only upgrade succeeded
+                                         // AND the credential-free control returned 401/403
+    bool    originNotValidated  = false; // LEAD: cross-origin upgrade seen, but cookie-only
+                                         // authentication or its 401/403 control denial
+                                         // was not established. Public sockets may accept
+                                         // arbitrary Origins without enabling a hijack.
     bool    originValidated     = false; // attacker Origin refused but a control handshake works
     int     attackerStatus      = 0;
     int     controlStatus       = 0;
@@ -63,8 +60,9 @@ QByteArray expectedAccept(const QByteArray &keyB64);
 QString headerValue(const QByteArray &headerBlock, const char *name);
 int statusFromHeaderBlock(const QByteArray &headerBlock);
 QByteArray buildHandshake(const Request &req, const QString &origin, const QByteArray &key);
-// Did the caller supply an ambient credential (Cookie / Authorization)? A
-// cross-origin 101 is only a CONFIRMED hijack when a session rides along.
+// Did the caller supply a nonempty, serializable Cookie without Authorization?
+// Explicit Authorization (including mixed credentials) cannot establish browser
+// authentication here, so those requests remain leads rather than confirmed hijacks.
 bool hasCredential(const QList<QPair<QString, QString>> &headers);
 // Host-derived Origin-validation bypass variants: crafted Origins that defeat a
 // naive allow-list a foreign sentinel alone would miss --
@@ -92,12 +90,12 @@ QList<QPair<QString, QString>> stripCredentials(const QList<QPair<QString, QStri
 // Grade the credential-stripped baseline of an already-accepted cross-origin
 // upgrade: is this a CONFIRMED credentialed hijack (CWE-1385 CSWSH) or only a
 // LEAD? A confirmed hijack requires that the no-credential baseline actually
-// RESPONDED and REFUSED the upgrade -- i.e. it proves the socket gates on the
-// session. Params are the baseline Shake's numeric shape:
+// responded with an explicit 401/403 denial. Generic errors, rate limits and
+// malformed upgrades cannot establish a session boundary. Params:
 //   baselineOk          -- the baseline handshake transported and got a response
 //   baselineStatus      -- its HTTP status (101 == upgrade)
 //   baselineAcceptValid -- its Sec-WebSocket-Accept validated
-// Returns true (CONFIRMED) only when baselineOk && NOT(status==101 && accept).
+// Returns true only when baselineOk && !baselineAcceptValid && status is 401/403.
 // Critically it requires baselineOk: a transient reconnect FAILURE (ok=false,
 // status=0) is NOT evidence the socket honors the session cross-site, so it must
 // grade a LEAD, not manufacture a confirmed hijack. Extracted from scan()'s

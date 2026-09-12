@@ -54,6 +54,12 @@ developer-facing record.
   read/patch API, with persistence, isolation, concurrency and browser regressions.
 
 ### Fixed
+- Require an explicit credential-free 401/403 denial before confirming a
+  cookie-gated WebSocket hijack. Rate limits, server errors, redirects, malformed
+  upgrades and caller-supplied Authorization remain unconfirmed leads, with
+  details that distinguish inconclusive controls from public sockets.
+- Regenerate captured WebSocket handshake headers without stale keys or body
+  framing, and preserve nonstandard ports and IPv6 brackets in the Host header.
 - Keep history, findings, editor selections and browser caches within their
   project and history generation. Reject project changes while work is active
   and wait for queued results before shutdown.
