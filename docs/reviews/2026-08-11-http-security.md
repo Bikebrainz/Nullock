@@ -11,7 +11,8 @@
 > have native and browser regression coverage. **#11 FIXED** in
 > [PR #17](https://github.com/Bikebrainz/Nullock/pull/17). **#10 reassessed:** an
 > explicit frame-ancestor allow-list still restricts framing; see below.
-> Findings **#5, #8 and #9 remain recorded for follow-up** against the current source.
+> **#9 FIXED:** CSS URL reflections now retain URL-context classification.
+> Findings **#5 and #8 remain recorded for follow-up** against the current source.
 
 # Security review — HTTP-header / token cluster (`Src/Core/Networking`)
 
@@ -93,6 +94,13 @@ findings for ignored base/host sources. See the
 **8 · No `jku`/`x5u` lead.** `decode()` surfaces `kid` but not `jku`/`x5u`; a token steering key resolution to an attacker JWKS URL gets no hint (zero `jku`/`x5u` references repo-wide). Narrowed: the raw header is preserved in the decoded struct, and parameter presence is a *lead*, not proof of server-side dereference. *Fix: extract `jku`/`x5u` and emit a key-substitution/SSRF test lead parallel to `kid`.*
 
 **9 · Host-header injection into `url()` under-graded.** `bodyHasUrl` matches `://s`, `"//s`, `'//s`, `=//s` but not CSS `url(//host…)`, so a reflection into a stylesheet `url()` sink stays `inUrlContext=false`. *Fix: add the `url(` protocol-relative context.*
+
+**Resolved (2026-09-12):** unquoted protocol-relative CSS URL tokens now produce
+a body-URL lead, including CSS whitespace and case variations. Parsed host
+comparison excludes suffix domains and a sentinel appearing only in URL user
+information. The [native suite](../../Tests/host_header/host_header_test.cpp)
+covers positive contexts, lookalikes and forwarding-header provenance. This
+remains a reflection heuristic, not proof of browser execution or exploitability.
 
 ## 10–11 — LOW (follow-up assessment)
 
