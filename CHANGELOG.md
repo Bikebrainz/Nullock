@@ -54,6 +54,10 @@ developer-facing record.
   read/patch API, with persistence, isolation, concurrency and browser regressions.
 
 ### Fixed
+- Match CSP findings to the effective script-element, event-handler and eval
+  directives. Reject malformed nonce/hash sources without hiding unsafe inline
+  execution, and honor restrictive overrides and strict-dynamic host suppression.
+  Verify the analyzer against Chromium enforcement in CI.
 - Require an explicit credential-free 401/403 denial before confirming a
   cookie-gated WebSocket hijack. Rate limits, server errors, redirects, malformed
   upgrades and caller-supplied Authorization remain unconfirmed leads, with
@@ -82,6 +86,9 @@ developer-facing record.
 - Preserve captured payload segments in all six active `alg:none` JWT variants,
   including original JSON whitespace, key order, escapes and numeric spelling.
   Header-only probes now match the manual forgery path's payload fidelity.
+- Recognize unquoted CSS `url(//host/...)` reflections as host-header URL-context
+  leads, including CSS whitespace and case variations. Compare the parsed host
+  to reject suffix domains and sentinels occurring only in URL user information.
 
 ### Added
 - **Lab 89: Regular expression denial of service (a signup username check

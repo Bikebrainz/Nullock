@@ -7,7 +7,12 @@
 > verification in the target's context. Regression coverage lives in
 > [the WebSocket unit suite](../../Tests/ws_probe/ws_probe_test.cpp) and
 > [the active-probe smoke fixtures](../../scripts/probe_smoke.sh).
-> Findings **#5–#11 remain recorded for follow-up** against the current source.
+> **#6 and #7 FIXED:** nonce/hash validation and effective script directives now
+> have native and browser regression coverage. **#11 FIXED** in
+> [PR #17](https://github.com/Bikebrainz/Nullock/pull/17). **#10 reassessed:** an
+> explicit frame-ancestor allow-list still restricts framing; see below.
+> **#9 FIXED:** CSS URL reflections now retain URL-context classification.
+> Findings **#5 and #8 remain recorded for follow-up** against the current source.
 
 # Security review — HTTP-header / token cluster (`Src/Core/Networking`)
 
@@ -72,13 +77,42 @@ On a forged/corrupted-token shot (`token` non-empty) a carried `Cookie: session=
 
 **7 · Gadget-host bypass missed on `script-src-elem`/`-attr`.** The bypassable-host loop walks only `script-src`/`default-src`; the element/attr override loop checks `unsafe-inline`/`eval`/wildcards but never the gadget-host list. *Fix: apply the gadget-host check to the element/attr directives too.*
 
+**Resolved and corrected (2026-09-12), #6–#7:** malformed nonce/hash values no
+longer suppress the unsafe-inline finding. Nonces use the ASCII source grammar;
+hashes must additionally decode. Digest length is not a suppression requirement:
+Chromium accepts a decodable short hash even though it cannot match a SHA digest.
+The historical recommendation to validate digest length was therefore incorrect.
+Gadget hosts and broad external sources are checked in the effective
+`script-src-elem` list, including its fallback. `script-src-attr` governs event
+handlers and cannot authorize external script URLs. Eval uses `script-src` or
+`default-src`. Restrictive overrides and `strict-dynamic` no longer produce
+findings for ignored base/host sources. See the
+[native suite](../../Tests/header_audit/header_audit_test.cpp),
+[Chromium differential suite](../../Tests/ui/csp_browser_test.cjs), and
+[CSP3 directive definitions](https://www.w3.org/TR/CSP3/#directive-script-src-elem).
+
 **8 · No `jku`/`x5u` lead.** `decode()` surfaces `kid` but not `jku`/`x5u`; a token steering key resolution to an attacker JWKS URL gets no hint (zero `jku`/`x5u` references repo-wide). Narrowed: the raw header is preserved in the decoded struct, and parameter presence is a *lead*, not proof of server-side dereference. *Fix: extract `jku`/`x5u` and emit a key-substitution/SSRF test lead parallel to `kid`.*
 
 **9 · Host-header injection into `url()` under-graded.** `bodyHasUrl` matches `://s`, `"//s`, `'//s`, `=//s` but not CSS `url(//host…)`, so a reflection into a stylesheet `url()` sink stays `inUrlContext=false`. *Fix: add the `url(` protocol-relative context.*
 
+**Resolved (2026-09-12):** unquoted protocol-relative CSS URL tokens now produce
+a body-URL lead, including CSS whitespace and case variations. Parsed host
+comparison excludes suffix domains and a sentinel appearing only in URL user
+information. The [native suite](../../Tests/host_header/host_header_test.cpp)
+covers positive contexts, lookalikes and forwarding-header provenance. This
+remains a reflection heuristic, not proof of browser execution or exploitability.
+
 ## 10–11 — LOW (follow-up assessment)
 
 **10 · `frame-ancestors 'none' https://evil` graded protective.** Narrow but real: the detector credits any non-wildcard `frame-ancestors` list as protective, so the specific footgun where an author writes `'none'` and appends an origin (CSP3 ignores the `'none'`) suppresses `clickjacking-missing`. *Fix: reuse the `effectivelyNone` sole-expression rule.*
+
+**Reassessed (2026-09-12):** the historical conclusion above conflates deny-all
+with restricted framing. Once `'none'` is ignored, the explicit origin allow-list
+still blocks other ancestors under [CSP3](https://www.w3.org/TR/CSP3/#directive-frame-ancestors).
+That satisfies the existing `clickjacking-missing` check for a restrictive policy.
+No production change is warranted for this example; native regressions preserve
+the distinction between an explicit origin and a wildcard. Inferring whether
+the configured origin is trusted requires target context.
 
 **11 · `alg:none` payload reserialization.** Real consistency gap — `algNoneVariants` re-serializes where `forgeNone` preserves `rawPayloadB64` — but `alg:none` has no signature and JSON claims are order-independent, so the missed surface is only a rare byte/order-sensitive verifier. *Fix: reuse `forgeNone`'s raw-payload preservation on the active path.*
 

@@ -1,14 +1,10 @@
 #pragma once
 
-// Response security-header audit, with a CSP analyzer that knows about bypass
-// gadgets. Most tools tick a box for "has a CSP"; the interesting question is
-// whether the CSP actually stops script execution. We flag the policies that
-// don't: 'unsafe-inline' that isn't neutralized by a nonce/hash + strict-
-// dynamic, 'unsafe-eval', wildcard / scheme sources, a missing object-src or
-// base-uri, and -- the part real tools miss -- allow-listed hosts that serve
-// JSONP or framework gadgets (Google's APIs, common CDNs) an attacker can use
-// to run script under an otherwise-tight policy. Plus the usual HSTS / nosniff
-// / clickjacking / Referrer-Policy / cookie-flag checks, scored in context.
+// Response security-header audit. CSP checks distinguish script elements,
+// inline handlers and eval, accounting for nonce/hash syntax and strict-dynamic.
+// Findings cover permissive sources, missing object-src/base-uri restrictions
+// and potential gadget hosts, alongside HSTS, nosniff, framing, referrer and
+// cookie protections. Gadget-host findings require target-specific verification.
 
 #include <QByteArray>
 #include <QList>

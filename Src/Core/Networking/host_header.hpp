@@ -78,7 +78,8 @@ Result test(const Request &req);
 // A Location value is itself a URL, so a bare //sentinel there counts.
 bool locationIsUrl(const QString &location, const QString &s);
 // The body must carry the sentinel as a real URL host: scheme, quoted //, or an
-// unquoted attribute-position //, but NOT bare // in prose/comments/JSON.
+// unquoted attribute-position // or CSS url(//...), but NOT bare // in prose.
+// URL-shaped reflection is a lead; this helper does not parse the whole document.
 bool bodyHasUrl(const QString &body, const QString &s);
 // Build the raw request, CR/LF-guarding method/path/query/hostLine (returns {}
 // if any is tainted) and dropping any CR/LF-bearing carried header.
