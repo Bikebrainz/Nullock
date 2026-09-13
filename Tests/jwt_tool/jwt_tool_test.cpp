@@ -16,6 +16,8 @@
 #include <QByteArray>
 #include <QCoreApplication>
 #include <QCryptographicHash>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QMessageAuthenticationCode>
 
 #include <cstdio>
@@ -47,6 +49,10 @@ int countId(const QList<Weakness> &w, const QString &id) {
     int n = 0; for (const auto &x : w) if (x.id == id) ++n; return n;
 }
 const qint64 kNow = 1700000000;   // pinned clock for deterministic exp tests
+QString detailOf(const QList<Weakness> &weaknesses, const QString &id) {
+    for (const auto &weakness : weaknesses) if (weakness.id == id) return weakness.detail;
+    return {};
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -109,6 +115,39 @@ int main(int argc, char **argv) {
     }
     chk("analyze: ES384 -> jwt-asym-alg",
         hasId(analyze(decode(mkToken("{\"alg\":\"ES384\"}", "{\"sub\":\"x\"}")), kNow), "jwt-asym-alg"));
+
+    // ===== header key-reference leads: offline and informational ========
+    for (const QString &name : QStringList{"jku", "x5u"}) {
+        const QString id = "jwt-" + name;
+        const QJsonObject header{{"alg", "RS256"}, {name, "https://keys.example/keys?secret-query-marker=1"}};
+        const auto decoded = decode(mkToken(QJsonDocument(header).toJson(QJsonDocument::Compact), "{}"));
+        const auto weaknesses = analyze(decoded, kNow);
+        chk("key reference: original header preserved", decoded.header == header);
+        chk("key reference: one informational lead", countId(weaknesses, id) == 1 && sevOf(weaknesses, id) == "info");
+        chk("key reference: warning does not copy URL query values", !detailOf(weaknesses, id).contains("secret-query-marker"));
+        chk("key reference: presence is not proof of a fetch", detailOf(weaknesses, id).contains("does not prove"));
+
+        const auto badPayload = decode(mkToken(QJsonDocument(header).toJson(QJsonDocument::Compact), "not-json"));
+        chk("key reference: survives unparseable payload", hasId(analyze(badPayload, kNow), id));
+        for (const QJsonValue &value : QJsonArray{QJsonValue::Null, 42, true, QJsonArray{}, QJsonObject{}, "", " \t"}) {
+            const QJsonObject malformed{{"alg", "RS256"}, {name, value}};
+            const auto result = analyze(decode(mkToken(QJsonDocument(malformed).toJson(QJsonDocument::Compact), "{}")), kNow);
+            chk("key reference: malformed values are informational", countId(result, id) == 1 && sevOf(result, id) == "info");
+            chk("key reference: malformed values have a diagnostic", detailOf(result, id).contains("malformed"));
+        }
+        const auto inPayload = analyze(decode(mkToken("{\"alg\":\"RS256\"}",
+            QJsonDocument(header).toJson(QJsonDocument::Compact))), kNow);
+        chk("key reference: payload claim is not a header lead", !hasId(inPayload, id));
+        const auto upperCase = analyze(decode(mkToken(QJsonDocument(QJsonObject{{"alg", "RS256"},
+            {name.toUpper(), "https://keys.example/"}}).toJson(QJsonDocument::Compact), "{}")), kNow);
+        chk("key reference: header names are case sensitive", !hasId(upperCase, id));
+    }
+    {
+        const auto both = analyze(decode(mkToken("{\"alg\":\"RS256\",\"jku\":\"https://keys.example/jwks\",\"x5u\":\"https://keys.example/cert\"}", "{}")), kNow);
+        chk("key reference: both parameters get independent leads", countId(both, "jwt-jku") == 1 && countId(both, "jwt-x5u") == 1);
+        const auto absent = analyze(decode(mkToken("{\"alg\":\"RS256\"}", "{}")), kNow);
+        chk("key reference: absent parameters produce no leads", !hasId(absent, "jwt-jku") && !hasId(absent, "jwt-x5u"));
+    }
 
     // ===== analyze: exp (numeric + string-encoded) ======================
     {

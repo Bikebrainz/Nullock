@@ -36,6 +36,19 @@ function Decode($r) { if ($r.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetSt
 try {
     Write-Host "=== Nullock integration smoke ===" -ForegroundColor Cyan
 
+    # JWT key-reference leads must survive the real control API serialization.
+    $jwtHeader = '{"alg":"RS256","jku":"https://keys.example/jwks?private-query-marker=1","x5u":"https://keys.example/cert"}'
+    $jwtHeaderB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($jwtHeader)).TrimEnd('=').Replace('+','-').Replace('/','_')
+    $jwtAnalysis = PostJ "/api/jwt/analyze" (J @{ token = "$jwtHeaderB64.e30.sig" })
+    $jwtLeads = @($jwtAnalysis.weaknesses | Where-Object { $_.id -in @('jwt-jku','jwt-x5u') })
+    Check "JWT: key-reference parameters produce two API leads" ($jwtAnalysis.ok -and $jwtLeads.Count -eq 2)
+    Check "JWT: key-reference leads remain informational" (@($jwtLeads | Where-Object { $_.severity -ne 'info' }).Count -eq 0)
+    Check "JWT: original header remains available" ($jwtAnalysis.header.jku -eq 'https://keys.example/jwks?private-query-marker=1')
+    Check "JWT: warnings do not repeat URL query values" (-not (($jwtLeads.detail -join ' ') -match 'private-query-marker'))
+    $jwtBadPayload = PostJ "/api/jwt/analyze" (J @{ token = "$jwtHeaderB64.bm90LWpzb24.sig" })
+    Check "JWT: unreadable payload retains header leads" (@($jwtBadPayload.weaknesses | Where-Object { $_.id -in @('jwt-jku','jwt-x5u') }).Count -eq 2)
+    Check "JWT: unreadable payload retains its diagnostic" (@($jwtBadPayload.weaknesses | Where-Object { $_.id -eq 'jwt-payload-unparseable' }).Count -eq 1)
+
     # 1) Seed a realistic multi-host scan: DB + cleartext+CVE + RDP + web.
     $xml = @'
 <?xml version="1.0"?>
