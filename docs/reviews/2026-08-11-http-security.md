@@ -13,7 +13,8 @@
 > explicit frame-ancestor allow-list still restricts framing; see below.
 > **#9 FIXED:** CSS URL reflections now retain URL-context classification.
 > **#8 FIXED:** offline JWT analysis now reports `jku`/`x5u` review leads.
-> Finding **#5 remains recorded for follow-up** against the current source.
+> **#5 FIXED (2026-09-13):** repeated and comma-combined policies are evaluated
+> together, with native and browser regressions described below.
 
 # Security review — HTTP-header / token cluster (`Src/Core/Networking`)
 
@@ -73,6 +74,25 @@ On a forged/corrupted-token shot (`token` non-empty) a carried `Cookie: session=
 **4 · CSWSH false negative (stale key).** The handshake builder skips only `Host`/`Origin`, so a captured `Sec-WebSocket-Key` is appended after the builder's fresh one; an RFC-6455-compliant server rejecting the duplicate returns a 101 whose Accept fails `expectedAccept()`, and a vulnerable endpoint is graded safe. *Fix: also drop `Connection`/`Upgrade`/`Sec-WebSocket-Key`/`Sec-WebSocket-Version` from carried headers.*
 
 **5 · Only the first CSP header is audited.** `headerValue` is first-wins; browsers enforce every CSP header (intersection), so a permissive first policy atop a strict second raises findings the browser already blocks — a proven false-positive-only direction. *Fix: audit every value via `allHeaderValues` and report a weakness only when no enforced policy blocks it.*
+
+**Resolved (2026-09-13):** the response analyzer consumes every enforced policy,
+including comma-combined fields. It intersects inline-element, event-handler and
+eval permissions separately and resolves initial HTTP(S)/data script URL sources
+using the actual response origin, schemes, wildcard hosts, ports and paths.
+Report-only policies cannot tighten enforced policy. Enforced `frame-ancestors`
+overrides XFO; empty ancestor lists block framing. These rules follow
+[CSP3 policy enforcement](https://www.w3.org/TR/CSP3/#multiple-policies) and are
+covered by the [native suite](../../Tests/header_audit/header_audit_test.cpp) and
+[real repeated-header browser fixtures](../../Tests/ui/csp_policy_browser_test.cjs).
+
+URL findings describe parser-inserted scripts without matching nonce or integrity
+metadata and their initial URL, not redirect chains, dynamically trusted scripts,
+or a complete browser security model. Path decoding includes Chromium's accepted
+encoded-slash behavior. Missing origins, unsupported URL spellings and bounded
+analysis limits produce an informational `csp-analysis-incomplete` result rather
+than a clean verdict. Limits are 256 policies, 262,144 characters of policy text, 4,096 source
+ranges and 65,536 pair comparisons per intersection chain. The object-src finding
+remains an explicit hardening recommendation, not proof of executable objects.
 
 **6 · Invalid CSP nonce suppresses a HIGH finding.** The nonce/hash acceptance checks prefix + closing quote + non-empty only, so `'nonce-!'` (invalid base64) neutralizes `csp-unsafe-inline` though the browser discards the malformed source and inline script still runs. *Fix: validate nonce/hash syntax (and digest length) before letting it cancel `unsafe-inline`.*
 

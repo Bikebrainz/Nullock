@@ -54,6 +54,12 @@ developer-facing record.
   read/patch API, with persistence, isolation, concurrency and browser regressions.
 
 ### Fixed
+- Evaluate repeated and comma-combined CSP policies together, independently of
+  header order. Keep inline elements, handlers and eval separate; intersect
+  HTTP(S)/data script sources using the response origin, host, port and path.
+  Honor all enforced frame-ancestors directives and their precedence over XFO.
+  Report incomplete URL-source analysis explicitly, with native and Chromium
+  regressions for restrictive policy combinations and permissive controls.
 - Match CSP findings to the effective script-element, event-handler and eval
   directives. Reject malformed nonce/hash sources without hiding unsafe inline
   execution, and honor restrictive overrides and strict-dynamic host suppression.

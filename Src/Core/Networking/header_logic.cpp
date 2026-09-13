@@ -7,6 +7,7 @@
 // TLS flag, and a plain Result struct.
 
 #include "header_audit.hpp"
+#include "csp_intersection.hpp"
 
 #include <QMap>
 #include <QRegularExpression>
@@ -31,9 +32,17 @@ QList<QString> allHeaderValues(const Headers &headers, const QString &name) {
     return out;
 }
 
+QStringList cspPolicies(const Headers &headers, const QString &name) {
+    QStringList policies;
+    for (const auto &value : allHeaderValues(headers, name))
+        for (const auto &policy : value.split(','))
+            if (!policy.trimmed().isEmpty()) policies.append(policy.trimmed());
+    return policies;
+}
+
 // Hosts that commonly serve JSONP endpoints or framework gadgets (AngularJS,
-// etc.) usable to execute script under an allow-listing CSP. Allow-listing any
-// of these in script-src effectively defeats the policy.
+// etc.) potentially usable to execute script under an allow-listing CSP.
+// A matching URL and the target's full policy still require verification.
 const QStringList &bypassableHostList() {
     static const QStringList h = {
         "ajax.googleapis.com", "www.google.com", "google.com",
@@ -79,11 +88,11 @@ bool hostMatches(const QString &cspHost, const QString &gadget) {
     // A CSP-side wildcard (script-src *.googleapis.com) covers the gadget host.
     if (cspHost.startsWith("*.")) {
         const QString suffix = cspHost.mid(1); // ".googleapis.com"
-        if (gadget == cspHost.mid(2) || gadget.endsWith(suffix)) return true;
+        if (gadget.endsWith(suffix)) return true;
     }
     if (gadget.startsWith("*.")) {
         const QString suffix = gadget.mid(1); // ".amazonaws.com"
-        return cspHost == gadget.mid(2) || cspHost.endsWith(suffix);
+        return cspHost.endsWith(suffix);
     }
     return cspHost == gadget;
 }
@@ -220,7 +229,7 @@ static bool frameAncestorsProtective(const QString &enforcedCsp) {
     const auto dirs = parseCsp(enforcedCsp);
     if (!dirs.contains("frame-ancestors")) return false;
     const QStringList fa = dirs.value("frame-ancestors");
-    if (fa.isEmpty()) return false;                 // "frame-ancestors;" governs nothing
+    if (fa.isEmpty()) return true;                  // empty source list blocks all ancestors
     for (const QString &s : fa) {
         const QString t = s.toLower();
         if (t == "*" || t == "http:" || t == "https:" || hostOf(s) == "*")
@@ -231,22 +240,26 @@ static bool frameAncestorsProtective(const QString &enforcedCsp) {
 
 // Audit an already-fetched response's security headers. Pure: no network I/O.
 // effTls is whether the (final, post-redirect) request was https.
-void analyze(const Headers &headers, bool effTls, Result &result) {
+void analyze(const Headers &headers, bool effTls, Result &result, const QUrl &origin) {
     auto add = [&](const QString &k, const QString &sev, const QString &t, const QString &d) {
         result.findings.append({ k, sev, t, d });
     };
 
     // ---- Content-Security-Policy ----
-    const QString csp = headerValue(headers, "Content-Security-Policy");
-    const QString cspRO = headerValue(headers, "Content-Security-Policy-Report-Only");
+    const QStringList csp = cspPolicies(headers, "Content-Security-Policy");
+    const QStringList cspRO = cspPolicies(headers, "Content-Security-Policy-Report-Only");
+    auto auditPolicies = [&](const QStringList &policies, bool reportOnly) {
+        if (policies.size() == 1) auditCsp(policies.first(), reportOnly, result);
+        else auditCspIntersection(policies, reportOnly, origin, effTls, result);
+    };
     result.hasCsp = !csp.isEmpty();
     if (!csp.isEmpty()) {
-        auditCsp(csp, false, result);
+        auditPolicies(csp, false);
     } else if (!cspRO.isEmpty()) {
         result.reportOnlyOnly = true;
         add("csp-report-only", "low", "CSP is report-only (not enforced)",
             "the policy logs violations but does not block them");
-        auditCsp(cspRO, true, result);
+        auditPolicies(cspRO, true);
     } else {
         add("csp-missing", "medium", "No Content-Security-Policy",
             "a CSP is the primary defense-in-depth against injected script");
@@ -297,13 +310,29 @@ void analyze(const Headers &headers, bool effTls, Result &result) {
     // ALLOW-FROM, an empty value, or any bogus token leaves the page framable.
     const QString xfoNorm = headerValue(headers, "X-Frame-Options").trimmed().toLower();
     const bool xfoProtects = (xfoNorm == "deny" || xfoNorm == "sameorigin");
-    // Only the ENFORCED CSP's frame-ancestors blocks framing (report-only never
-    // does), and only when its source list is restrictive.
-    const bool faProtects = frameAncestorsProtective(csp);
-    if (!xfoProtects && !faProtects)
+    // Every enforced policy applies. Any enforced frame-ancestors directive
+    // overrides XFO, even when that directive allows arbitrary ancestors.
+    bool hasFrameAncestors = false, faProtects = false;
+    for (const auto &policy : csp) {
+        hasFrameAncestors |= parseCsp(policy).contains("frame-ancestors");
+        faProtects |= frameAncestorsProtective(policy);
+    }
+    bool frameUnresolved = false;
+    if (hasFrameAncestors && !faProtects && csp.size() > 1) {
+        const auto combined = cspFrameAncestorsProtective(csp, origin, effTls);
+        if (combined) faProtects = *combined;
+        else {
+            frameUnresolved = true;
+            bool reported = false;
+            for (const auto &f : result.findings) reported |= f.key == "csp-analysis-incomplete";
+            if (!reported) add("csp-analysis-incomplete", "info", "CSP ancestor intersection needs further review",
+                "The bounded URL-source analysis could not resolve the complete ancestor list; review framing with the full response context.");
+        }
+    }
+    if (!frameUnresolved && !(hasFrameAncestors ? faProtects : xfoProtects))
         add("clickjacking-missing", "medium", "No effective clickjacking defense",
-            "no protecting X-Frame-Options (DENY/SAMEORIGIN) and no restrictive "
-            "CSP frame-ancestors; the page can be framed for clickjacking");
+            "no restrictive enforced CSP frame-ancestors, or protecting "
+            "X-Frame-Options when frame-ancestors is absent");
 
     // Presence alone is not protection: "unsafe-url" deliberately sends the FULL URL
     // (query and all) to every destination, which is exactly the leak this finding

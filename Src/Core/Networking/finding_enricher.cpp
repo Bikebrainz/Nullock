@@ -235,6 +235,7 @@ const QHash<QString, Mapping> &table() {
         { "secret-exposed", { "CWE-798", "A07:2021-Identification and Authentication Failures", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Move the credential server-side; rotate it immediately (assume compromised) and scope front-end keys to least privilege." } },
 
         // ---- Security headers / CSP ----------------------------------
+        { "csp-analysis-incomplete", { "CWE-693", "A05:2021-Security Misconfiguration", 0.0, "", "", "Review the full response policy set with its origin; this informational analysis limit does not establish a policy weakness." } },
         { "csp-missing",         { "CWE-693", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Deploy a Content-Security-Policy with a nonce/hash-based script-src and 'strict-dynamic'." } },
         { "csp-unsafe-inline",   { "CWE-693", "A05:2021-Security Misconfiguration", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Drop 'unsafe-inline'; use per-response nonces or hashes plus 'strict-dynamic'." } },
         { "csp-unsafe-eval",     { "CWE-693", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Remove 'unsafe-eval' and refactor any eval/new Function usage." } },

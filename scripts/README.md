@@ -46,6 +46,10 @@ installed-package checks are documented in [packaging](../packaging/README.md).
 | `integration_smoke.ps1 -exe <path>` | Windows analysis and reporting integration. |
 
 `annotations_cli_test.py` checks CLI request contracts without a native build.
+The CSP browser comparisons run with `node Tests/ui/csp_browser_test.cjs <header_audit_test>`
+and `node Tests/ui/csp_policy_browser_test.cjs <header_audit_test>` after installing
+`Tests/ui` dependencies and Chromium as shown in CI. They compare the production
+analyzer with single, repeated and comma-combined response policies.
 `replay_fuzz_corpus.py <build-dir>` replays committed parser seeds against built
 fuzz harnesses. `container_smoke.py <base-url>` checks the container service;
 use the fixture setup and environment from CI.
