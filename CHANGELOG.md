@@ -86,6 +86,9 @@ developer-facing record.
 - Preserve captured payload segments in all six active `alg:none` JWT variants,
   including original JSON whitespace, key order, escapes and numeric spelling.
   Header-only probes now match the manual forgery path's payload fidelity.
+- Recognize unquoted CSS `url(//host/...)` reflections as host-header URL-context
+  leads, including CSS whitespace and case variations. Compare the parsed host
+  to reject suffix domains and sentinels occurring only in URL user information.
 
 ### Added
 - **Lab 89: Regular expression denial of service (a signup username check

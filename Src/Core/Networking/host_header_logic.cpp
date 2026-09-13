@@ -6,6 +6,9 @@
 
 #include "host_header.hpp"
 
+#include <QRegularExpression>
+#include <QUrl>
+
 namespace Nullock::Core::HostHeader {
 
 // A Location header value IS itself a URL, so a bare "//sentinel" there counts.
@@ -18,11 +21,26 @@ bool locationIsUrl(const QString &location, const QString &s) {
 // for one: a scheme ("://"+s), a QUOTED protocol-relative URL ("//s / '//s), or
 // an UNQUOTED protocol-relative value in attribute position ("=//"+s, e.g.
 // href=//sentinel) -- the "=" prefix is present in attributes but not in prose,
-// so it doesn't reintroduce the comment/JSON false positive.
+// so it doesn't reintroduce the bare-comment/JSON false positive. Unquoted CSS
+// url() values are another URL-shaped context. This is a reflection heuristic,
+// not an HTML/CSS parser or proof that the target browser fetched the URL.
 bool bodyHasUrl(const QString &body, const QString &s) {
-    return body.contains("://" + s)
+    if (body.contains("://" + s)
         || body.contains("\"//" + s) || body.contains("'//" + s)
-        || body.contains("=//" + s);
+        || body.contains("=//" + s)) return true;
+
+    // CSS whitespace can follow '(', but cannot separate url from '('. Require
+    // a complete unquoted token and compare the parsed host, avoiding function
+    // lookalikes, suffix hosts and a sentinel occurring only in user information.
+    static const QRegularExpression cssUrl(
+        R"((?<![-\w\\\x{80}-\x{10ffff}])[Uu][Rr][Ll]\([\t\n\f\r ]*(//[^\t\n\f\r "'()\\]+)[\t\n\f\r ]*\))");
+    auto matches = cssUrl.globalMatch(body);
+    while (matches.hasNext()) {
+        const QUrl url(matches.next().captured(1), QUrl::StrictMode);
+        if (url.isValid() && url.host().compare(s, Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
 }
 
 // Build a GET/POST where the Host line is `hostLine` and one extra header is

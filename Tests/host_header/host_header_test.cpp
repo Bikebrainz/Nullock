@@ -40,6 +40,28 @@ int main(int argc, char **argv) {
     chk("body: prose host (no URL)",        !bodyHasUrl("<p>requested host = " + S + "</p>", S));
     chk("body: absent",                     !bodyHasUrl("<p>nothing here</p>", S));
 
+    // Unquoted CSS URLs are URL contexts too; preserve the distinction from
+    // arbitrary function names, host prefixes and URL user information.
+    for (const QString &value : QStringList{
+             "url(//" + S + "/image.png)", "URL( //" + S + "/image.png )",
+             "url(\t\r\n//" + S + ":8080/image.png)", "url(//" + S + ")",
+             "url(//" + S + "?image=1)", "url(//" + S + "#image)"}) {
+        chk("body: CSS protocol-relative URL", bodyHasUrl("body { background: " + value + "; }", S));
+    }
+    for (const QString &value : QStringList{
+             "myurl(//" + S + "/x)", "-url(//" + S + "/x)",
+             "url (//" + S + "/x)", "url(//" + S + ".other.test/x)",
+             "url(//" + S + "@other.test/x)", "url(//" + S + "extra/x)"}) {
+        chk("body: CSS lookalike is not a sentinel URL", !bodyHasUrl(value, S));
+    }
+    {
+        const auto v = classifyHostReflection(S, "X-Forwarded-Host", false, QString(),
+            "<style>body { background-image: url(//" + S + "/image.png); }</style>", {});
+        chk("classify: CSS URL is a body-url lead with forwarding provenance",
+            v.report && v.anyInjection && !v.anyReflected && v.hit.inUrlContext
+            && v.hit.where == "body-url" && !v.hit.fromHostLine);
+    }
+
     // ---- locationIsUrl ---------------------------------------------------
     chk("loc: scheme",        locationIsUrl("https://" + S + "/welcome", S));
     chk("loc: bare proto-rel", locationIsUrl("//" + S + "/welcome", S));
