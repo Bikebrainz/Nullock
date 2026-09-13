@@ -19,6 +19,8 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QString>
 #include <QUrl>
 
@@ -52,6 +54,14 @@ QStringList csp(const char *policy) {
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
+
+    // Browser differential tests use the same production analyzer as this suite.
+    if (app.arguments().size() == 3 && app.arguments().at(1) == "--analyze-csp") {
+        const QStringList findings = keys(H({{"Content-Security-Policy", app.arguments().at(2)}}), false);
+        const QByteArray json = QJsonDocument(QJsonArray::fromStringList(findings)).toJson(QJsonDocument::Compact);
+        std::fwrite(json.constData(), 1, json.size(), stdout);
+        return 0;
+    }
 
     // ===== #1 no script governance -> high finding ========================
     chk("CSP img-src only (no script-src/default-src) -> csp-no-script-restriction",
@@ -94,6 +104,49 @@ int main(int argc, char **argv) {
         has(csp("script-src 'unsafe-inline' 'nonce-abc"), "csp-unsafe-inline"));
     chk("unsafe-inline + a well-formed 'sha256-abc' STILL suppresses (no over-fire)",
         !has(csp("script-src 'unsafe-inline' 'sha256-abc'"), "csp-unsafe-inline"));
+
+    // ===== CSP source grammar and effective directive contexts ===========
+    for (const QString &source : QStringList{
+             "'nonce-!'", "'nonce-ab=c'", "'nonce-ab==='", "'nonce-='",
+             "'sha256-a!b'", "'sha384-a.b'", "'sha512-a$b'", "'sha256-a'", "'sha256-abc=='", QStringLiteral("'nonce-\u212a'")}) {
+        for (const QString &directive : QStringList{"script-src", "script-src-elem", "script-src-attr"}) {
+            const QString policy = directive + " 'unsafe-inline' " + source;
+            chk("CSP malformed nonce/hash cannot hide effective unsafe-inline",
+                has(keys(H({{"Content-Security-Policy", policy}}), false), "csp-unsafe-inline"));
+        }
+    }
+    for (const QString &source : QStringList{"'nonce-a_/-+b=='", "'sha256-ab'", "'SHA384-ABC='", "'sha512-abc='", "'sha256-ab='", "'sha-256-ab'"}) {
+        chk("CSP nonce/hash suppression depends on source grammar, not digest length",
+            !has(keys(H({{"Content-Security-Policy", "script-src 'unsafe-inline' " + source}}), false), "csp-unsafe-inline"));
+    }
+    chk("CSP element gadget-host override is audited",
+        has(csp("script-src 'self'; script-src-elem https://ajax.googleapis.com"), "csp-bypassable-host"));
+    chk("CSP attribute sources cannot authorize external scripts",
+        !has(csp("script-src 'self'; script-src-attr https://ajax.googleapis.com https:"), "csp-bypassable-host")
+        && !has(csp("script-src 'self'; script-src-attr https://ajax.googleapis.com https:"), "csp-wildcard-source"));
+    chk("CSP restrictive element override replaces a gadget-host base list",
+        !has(csp("script-src https://ajax.googleapis.com; script-src-elem 'self'"), "csp-bypassable-host"));
+    chk("CSP both strict inline overrides replace permissive base",
+        !has(csp("script-src 'unsafe-inline'; script-src-elem 'none'; script-src-attr 'none'"), "csp-unsafe-inline"));
+    chk("CSP attribute context still falls back to permissive base",
+        has(csp("script-src 'unsafe-inline'; script-src-elem 'none'"), "csp-unsafe-inline"));
+    chk("CSP unsafe-eval in element override has no effect",
+        !has(csp("script-src 'self'; script-src-elem 'self' 'unsafe-eval'"), "csp-unsafe-eval"));
+    chk("CSP unsafe-eval in attribute override has no effect",
+        !has(csp("script-src 'self'; script-src-attr 'unsafe-eval'"), "csp-unsafe-eval"));
+    chk("CSP eval remains controlled by base script directive",
+        has(csp("script-src 'self' 'unsafe-eval'; script-src-elem 'self'; script-src-attr 'none'"), "csp-unsafe-eval"));
+    chk("CSP strict-dynamic suppresses unsafe-inline even without a nonce",
+        !has(csp("script-src 'unsafe-inline' 'strict-dynamic'"), "csp-unsafe-inline"));
+    chk("CSP strict-dynamic ignores parser-inserted host and wildcard sources",
+        !has(csp("script-src 'nonce-abc' 'strict-dynamic' https: https://ajax.googleapis.com"), "csp-bypassable-host")
+        && !has(csp("script-src 'nonce-abc' 'strict-dynamic' https: https://ajax.googleapis.com"), "csp-wildcard-source"));
+    chk("CSP permissive element override restores base-uri hardening requirement",
+        has(csp("script-src 'none'; script-src-elem 'unsafe-inline'"), "csp-no-base-uri"));
+    chk("CSP explicit frame allow-list remains restrictive when none is ignored",
+        !has(csp("frame-ancestors 'none' https://allowed.example"), "clickjacking-missing"));
+    chk("CSP none alongside a wildcard does not restrict framing",
+        has(csp("frame-ancestors 'none' *"), "clickjacking-missing"));
 
     // ===== parseCsp first-occurrence + bypassable host ====================
     chk("duplicate script-src: first ('unsafe-inline') wins, not the later 'self'",

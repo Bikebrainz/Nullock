@@ -54,6 +54,10 @@ developer-facing record.
   read/patch API, with persistence, isolation, concurrency and browser regressions.
 
 ### Fixed
+- Match CSP findings to the effective script-element, event-handler and eval
+  directives. Reject malformed nonce/hash sources without hiding unsafe inline
+  execution, and honor restrictive overrides and strict-dynamic host suppression.
+  Verify the analyzer against Chromium enforcement in CI.
 - Require an explicit credential-free 401/403 denial before confirming a
   cookie-gated WebSocket hijack. Rate limits, server errors, redirects, malformed
   upgrades and caller-supplied Authorization remain unconfirmed leads, with
