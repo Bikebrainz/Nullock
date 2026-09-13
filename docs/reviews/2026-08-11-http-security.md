@@ -12,7 +12,8 @@
 > [PR #17](https://github.com/Bikebrainz/Nullock/pull/17). **#10 reassessed:** an
 > explicit frame-ancestor allow-list still restricts framing; see below.
 > **#9 FIXED:** CSS URL reflections now retain URL-context classification.
-> Findings **#5 and #8 remain recorded for follow-up** against the current source.
+> **#8 FIXED:** offline JWT analysis now reports `jku`/`x5u` review leads.
+> Finding **#5 remains recorded for follow-up** against the current source.
 
 # Security review — HTTP-header / token cluster (`Src/Core/Networking`)
 
@@ -92,6 +93,15 @@ findings for ignored base/host sources. See the
 [CSP3 directive definitions](https://www.w3.org/TR/CSP3/#directive-script-src-elem).
 
 **8 · No `jku`/`x5u` lead.** `decode()` surfaces `kid` but not `jku`/`x5u`; a token steering key resolution to an attacker JWKS URL gets no hint (zero `jku`/`x5u` references repo-wide). Narrowed: the raw header is preserved in the decoded struct, and parameter presence is a *lead*, not proof of server-side dereference. *Fix: extract `jku`/`x5u` and emit a key-substitution/SSRF test lead parallel to `kid`.*
+
+**Resolved (2026-09-12):** offline analysis reads both parameters from the
+already-preserved header object and emits separate informational leads through
+the existing JWT API and interface. Non-string and blank values are diagnosed
+as malformed metadata. The warnings neither fetch URLs nor repeat their values,
+and explicitly distinguish presence from verified server behavior, following
+[RFC 8725's guidance on received claims](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.10).
+The [JWT unit suite](../../Tests/jwt_tool/jwt_tool_test.cpp) covers both parameters,
+malformed types, unreadable payloads, case sensitivity and payload-only lookalikes.
 
 **9 · Host-header injection into `url()` under-graded.** `bodyHasUrl` matches `://s`, `"//s`, `'//s`, `=//s` but not CSS `url(//host…)`, so a reflection into a stylesheet `url()` sink stays `inUrlContext=false`. *Fix: add the `url(` protocol-relative context.*
 

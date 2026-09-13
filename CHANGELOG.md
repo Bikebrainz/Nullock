@@ -89,6 +89,10 @@ developer-facing record.
 - Recognize unquoted CSS `url(//host/...)` reflections as host-header URL-context
   leads, including CSS whitespace and case variations. Compare the parsed host
   to reject suffix domains and sentinels occurring only in URL user information.
+- Surface JWT `jku` and `x5u` header parameters as informational key-reference
+  leads, including malformed values and tokens with unreadable payloads.
+  Keep analysis offline and distinguish parameter presence from a verified
+  server fetch or vulnerability.
 
 ### Added
 - **Lab 89: Regular expression denial of service (a signup username check

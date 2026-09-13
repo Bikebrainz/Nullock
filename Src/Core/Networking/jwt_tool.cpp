@@ -132,6 +132,28 @@ QList<Weakness> analyze(const Decoded &d, qint64 nowEpoch) {
                        "kid injection (path traversal / SQLi).") });
     }
 
+    // Header-controlled key locations are review leads, not verified server
+    // behavior. Analyze their presence offline, including malformed values;
+    // never fetch them or copy potentially sensitive URL values into warnings.
+    for (const QString &name : QStringList{"jku", "x5u"}) {
+        if (!d.header.contains(name)) continue;
+        const QJsonValue value = d.header.value(name);
+        if (!value.isString() || value.toString().trimmed().isEmpty()) {
+            out.append({ "jwt-" + name, "info",
+                name + " is present but is not a non-empty string: malformed "
+                "key-reference metadata. Presence does not prove that the verifier "
+                "accepts or resolves this value." });
+            continue;
+        }
+        const QString keySource = name == "jku" ? "JWK Set" : "X.509 certificate";
+        out.append({ "jwt-" + name, "info",
+            name + " supplies a " + keySource + " reference. If the verifier resolves "
+            "this header as a URL, review its trusted key-source allow-list and "
+            "test for key substitution or server-side request forgery. Presence "
+            "alone does not prove a fetch or vulnerability; no URL was fetched "
+            "by this offline analysis." });
+    }
+
     // ---- payload-derived checks (require a parsed payload) ----
     if (!d.payloadOk) {
         out.append({ "jwt-payload-unparseable", "info",
