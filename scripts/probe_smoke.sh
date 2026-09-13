@@ -364,6 +364,21 @@ def make(mode):
                 if mode == 'hdr-xfo-allowall':
                     self._send(200, b'<html>ok</html>', 'text/html',
                                [('X-Frame-Options', 'ALLOWALL')]); return
+                if mode == 'hdr-multiple':
+                    policies = ["script-src 'unsafe-inline' 'unsafe-eval' https:; frame-ancestors *",
+                                "script-src 'none'; frame-ancestors 'none'"]
+                    if 'reverse' in self.path: policies.reverse()
+                    if 'combined' in self.path: policies = [', '.join(policies)]
+                    self._send(200, b'<html>ok</html>', 'text/html',
+                               [('Content-Security-Policy', p) for p in policies]); return
+                if mode == 'hdr-self':
+                    self._send(200, b'<html>ok</html>', 'text/html',
+                               [('Content-Security-Policy', "script-src 'self'"),
+                                ('Content-Security-Policy', 'script-src http:')]); return
+                if mode == 'hdr-frame-precedence':
+                    self._send(200, b'<html>ok</html>', 'text/html',
+                               [('Content-Security-Policy', 'frame-ancestors *'),
+                                ('X-Frame-Options', 'DENY')]); return
                 self._send(200, b'<html>ok</html>'); return
             if mode.startswith('waf-'):
                 # Passive WAF/CDN/LB detection mock.
@@ -1067,7 +1082,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        secrets-vuln secrets-example
        fp-prose fp-real
        waf-detect waf-clean
-       hdr-noscript hdr-wildcard hdr-xfo-allowall
+       hdr-noscript hdr-wildcard hdr-xfo-allowall hdr-multiple hdr-self hdr-frame-precedence
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -1343,6 +1358,11 @@ echo "== security-header / CSP audit =="
 chk "hdr: CSP without script-src/default-src -> csp-no-script-restriction HIGH (FN fix)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-noscript]} '')\"}")" "any(f['key']=='csp-no-script-restriction' and f['severity']=='high' for f in d.get('findings',[]))"
 chk "hdr: script-src https://* -> csp-wildcard-source (scheme-wildcard FN fix)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-wildcard]} '')\"}")" "any(f['key']=='csp-wildcard-source' for f in d.get('findings',[]))"
 chk "hdr: X-Frame-Options ALLOWALL -> clickjacking-missing (permissive XFO FN fix)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-xfo-allowall]} '')\"}")" "any(f['key']=='clickjacking-missing' for f in d.get('findings',[]))"
+for variant in '' 'reverse' 'combined' 'combined-reverse'; do
+  chk "hdr: all policies restrict execution and framing ($variant)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-multiple]} "$variant")\"}")" "d.get('ok') and d.get('hasCsp') and not any(f['key'] in ('csp-unsafe-inline','csp-unsafe-eval','csp-wildcard-source','csp-no-script-restriction','clickjacking-missing') for f in d.get('findings',[]))"
+done
+chk "hdr: fetch propagates response origin for self" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-self]} '')\"}")" "d.get('ok') and d.get('hasCsp') and not any(f['key'] in ('csp-wildcard-source','csp-analysis-incomplete') for f in d.get('findings',[]))"
+chk "hdr: enforced ancestors override XFO" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-frame-precedence]} '')\"}")" "d.get('ok') and any(f['key']=='clickjacking-missing' for f in d.get('findings',[]))"
 
 echo "== token sequencer =="
 chk "seq: 8-hex tokens (~32 effective bits) -> NOT looks-random (keyspace)" "$(post /api/sequencer/analyze "{\"tokens\":[\"1a2b3c4d\",\"9f8e7d6c\",\"00112233\",\"deadbeef\",\"cafe1234\",\"5566aabb\",\"0f1e2d3c\",\"98765432\",\"abcdef01\",\"13579bdf\"]}")" "d.get('verdict')!='looks-random' and d.get('score',100)<80"

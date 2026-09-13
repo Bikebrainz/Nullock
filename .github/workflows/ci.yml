@@ -170,6 +170,8 @@ jobs:
         run: node Tests/ui/browser_test.cjs build/Src/App/Release/NullockApp.exe
       - name: CSP verdicts match browser enforcement
         run: node Tests/ui/csp_browser_test.cjs build/Tests/header_audit/Release/header_audit_test.exe
+      - name: repeated CSP policies match browser enforcement
+        run: node Tests/ui/csp_policy_browser_test.cjs build/Tests/header_audit/Release/header_audit_test.exe
       - name: project notes across browser clients
         run: node Tests/ui/annotations_browser_test.cjs build/Src/App/Release/NullockApp.exe
       - name: browser Intruder workspace restoration

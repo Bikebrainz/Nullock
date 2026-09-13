@@ -33,7 +33,7 @@ const QStringList &emittedKinds() {
         "cors-origin-reflection", "cors-arbitrary-origin", "cors-reflected-credentialed",
         "cors-scheme-downgrade", "cors-origin-normalization", "cors-wildcard", "cors-wildcard-creds",
         "crlf-injection",
-        "csp-no-base-uri", "csp-no-form-action", "csp-no-frame-ancestors", "csp-report-only",
+        "csp-analysis-incomplete", "csp-no-base-uri", "csp-no-form-action", "csp-no-frame-ancestors", "csp-report-only",
         "csp-unsafe-eval", "csp-unsafe-inline", "csp-wildcard-src", "csv-formula-injection",
         "debug-method-allowed", "etag-predictable", "exposed-dev-file", "fw-angularjs",
         "fw-aspnet", "fw-django", "fw-express", "fw-laravel",
@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
         }
     }
     std::fprintf(stderr, "  coverage: %d/%d emitted kinds enrich to non-empty CWE+OWASP\n",
-                 pass, emittedKinds().size());
+                 pass, static_cast<int>(emittedKinds().size()));
 
     // 2) Spot-check precise CWE resolution (exact + family).
     for (const auto &s : spotChecks()) {
@@ -222,6 +222,15 @@ int main(int argc, char **argv) {
                   stampedFirst
                   && f.cvssVector.isEmpty()
                   && qFuzzyCompare(f.cvssScore + 1.0, 7.0 + 1.0));   // high -> 7.0
+    }
+
+    {
+        Finding f;
+        f.kind = "csp-analysis-incomplete";
+        f.severity = "info";
+        FindingEnricher::enrich(f);
+        checkIdem("incomplete CSP analysis cannot inherit a vulnerability score",
+            f.cvssScore == 0.0 && f.cvssVector.isEmpty() && f.severity == "info");
     }
 
     // 3c) Guard against over-clearing: cve-correlated has a 0.0 *table* score

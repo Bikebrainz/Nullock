@@ -65,7 +65,11 @@ Result test(const Request &req) {
     result.status = resp.statusCode;
 
     // All header analysis is pure -- run it on the fetched response's headers.
-    analyze(resp.headers, effTls, result);
+    QUrl origin;
+    origin.setScheme(effTls ? "https" : "http");
+    origin.setHost(cur.host);
+    origin.setPort(cur.port);
+    analyze(resp.headers, effTls, result, origin);
     return result;
 }
 

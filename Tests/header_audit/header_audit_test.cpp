@@ -21,6 +21,7 @@
 #include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QString>
 #include <QUrl>
 
@@ -61,6 +62,106 @@ int main(int argc, char **argv) {
         const QByteArray json = QJsonDocument(QJsonArray::fromStringList(findings)).toJson(QJsonDocument::Compact);
         std::fwrite(json.constData(), 1, json.size(), stdout);
         return 0;
+    }
+
+    if (app.arguments().size() == 3 && app.arguments().at(1) == "--analyze-headers") {
+        const auto input = QJsonDocument::fromJson(app.arguments().at(2).toUtf8()).object();
+        HdrList headers;
+        for (const auto &v : input.value("csp").toArray()) headers.append({"Content-Security-Policy", v.toString()});
+        for (const auto &v : input.value("reportOnly").toArray()) headers.append({"Content-Security-Policy-Report-Only", v.toString()});
+        if (input.contains("xfo")) headers.append({"X-Frame-Options", input.value("xfo").toString()});
+        Result result;
+        const QUrl origin(input.value("origin").toString());
+        analyze(headers, origin.scheme() == "https", result, origin);
+        QStringList findings;
+        for (const auto &f : result.findings) findings.append(f.key);
+        const auto json = QJsonDocument(QJsonArray::fromStringList(findings)).toJson(QJsonDocument::Compact);
+        std::fwrite(json.constData(), 1, json.size(), stdout);
+        return 0;
+    }
+
+    // Repeated fields and comma-combined fields represent the same policy list.
+    // Reversing the list must never change which execution contexts survive.
+    struct MultiCase { const char *a; const char *b; const char *key; bool expected; };
+    const MultiCase multiCases[] = {
+        {"script-src 'unsafe-inline' 'unsafe-eval' https:", "script-src 'none'", "csp-unsafe-inline", false},
+        {"script-src 'unsafe-inline' 'unsafe-eval' https:", "script-src 'none'", "csp-unsafe-eval", false},
+        {"script-src 'unsafe-inline' 'unsafe-eval' https:", "script-src 'none'", "csp-wildcard-source", false},
+        {"img-src *", "script-src 'none'", "csp-no-script-restriction", false},
+        {"script-src 'unsafe-inline'; script-src-elem 'none'", "script-src 'unsafe-inline'; script-src-attr 'none'", "csp-unsafe-inline", false},
+        {"script-src 'unsafe-inline'", "img-src 'none'", "csp-unsafe-inline", true},
+        {"script-src 'unsafe-eval'", "img-src 'none'", "csp-unsafe-eval", true},
+        {"script-src 'unsafe-inline'", "script-src 'unsafe-inline' 'nonce-abc'", "csp-unsafe-inline", false},
+        {"script-src https:", "script-src https://ajax.googleapis.com", "csp-wildcard-source", false},
+        {"script-src https:", "script-src https://ajax.googleapis.com", "csp-bypassable-host", true},
+        {"script-src https://ajax.googleapis.com", "script-src https://unpkg.com", "csp-bypassable-host", false},
+        {"script-src https:", "script-src data:", "csp-wildcard-source", false},
+        {"script-src *", "script-src data:", "csp-wildcard-source", false},
+        {"script-src http:", "script-src https:", "csp-wildcard-source", true},
+        {"script-src *.googleapis.com", "script-src googleapis.com", "csp-bypassable-host", false},
+        {"script-src https://ajax.googleapis.com:8443", "script-src https://ajax.googleapis.com", "csp-bypassable-host", false},
+        {"script-src https://ajax.googleapis.com/a/", "script-src https://ajax.googleapis.com/b/", "csp-bypassable-host", false},
+        {"script-src https://ajax.googleapis.com/a/", "script-src https://ajax.googleapis.com/a", "csp-bypassable-host", false},
+        {"script-src https://ajax.googleapis.com/a/", "script-src https://ajax.googleapis.com/a/b.js", "csp-bypassable-host", true},
+        {"script-src https://ajax.googleapis.com/a%2fb/", "script-src https://ajax.googleapis.com/a/b/", "csp-bypassable-host", true},
+        {"script-src https://ajax.googleapis.com", "script-src 'strict-dynamic' https:", "csp-bypassable-host", false},
+        {"script-src 'unsafe-inline' 'unsafe-eval' https:", "sandbox", "csp-unsafe-inline", false},
+        {"script-src 'unsafe-inline' 'unsafe-eval' https:", "sandbox", "csp-unsafe-eval", false},
+        {"script-src 'unsafe-inline' 'unsafe-eval' https:", "sandbox", "csp-wildcard-source", false},
+        {"frame-ancestors *", "frame-ancestors 'none'", "clickjacking-missing", false},
+        {"frame-ancestors *", "frame-ancestors", "clickjacking-missing", false},
+        {"frame-ancestors http://*:8080", "frame-ancestors https://*:8443", "clickjacking-missing", false},
+        {"base-uri http://*:8080", "base-uri https://*:8443", "csp-no-base-uri", false},
+        {"base-uri http:", "base-uri https:", "csp-no-base-uri", true},
+    };
+    for (const auto &test : multiCases) for (int reverse = 0; reverse < 2; ++reverse) {
+        const QString a = QString::fromLatin1(reverse ? test.b : test.a);
+        const QString b = QString::fromLatin1(reverse ? test.a : test.b);
+        for (int combined = 0; combined < 2; ++combined) {
+            const HdrList headers = combined ? H({{"Content-Security-Policy", a + ", " + b}})
+                : H({{"Content-Security-Policy", a}, {"content-security-policy", b}});
+            const auto label = QString("multi %1 + %2 (%3): %4").arg(a, b).arg(combined).arg(test.key).toUtf8();
+            chk(label.constData(), has(keys(headers, false), test.key) == test.expected);
+        }
+    }
+    chk("enforced frame-ancestors * overrides XFO DENY",
+        has(keys(H({{"Content-Security-Policy", "frame-ancestors *"}, {"X-Frame-Options", "DENY"}}), false), "clickjacking-missing"));
+    chk("empty frame-ancestors blocks all ancestors",
+        !has(csp("frame-ancestors"), "clickjacking-missing"));
+    chk("report-only cannot tighten enforced inline",
+        has(keys(H({{"Content-Security-Policy", "script-src 'unsafe-inline'"}, {"Content-Security-Policy-Report-Only", "script-src 'none'"}}), false), "csp-unsafe-inline"));
+    {
+        const HdrList headers = H({{"Content-Security-Policy", "script-src 'self'"},
+            {"Content-Security-Policy", "script-src https://ajax.googleapis.com"}});
+        Result r;
+        analyze(headers, true, r, QUrl("https://ajax.googleapis.com"));
+        QStringList found;
+        for (const auto &f : r.findings) found.append(f.key);
+        chk("self resolves the actual gadget origin", has(found, "csp-bypassable-host"));
+        chk("known self origin resolves completely", !has(found, "csp-analysis-incomplete"));
+        chk("unknown self origin explicitly reports incomplete", has(keys(headers, true), "csp-analysis-incomplete"));
+        chk("blocking policy resolves unknown self", !has(keys(H({{"Content-Security-Policy", "script-src 'self', script-src 'none'"}}), true), "csp-analysis-incomplete"));
+        QStringList many;
+        for (int i = 0; i < 257; ++i) many.append("script-src https:");
+        chk("policy count limit is explicit", has(keys(H({{"Content-Security-Policy", many.join(',')}}), true), "csp-analysis-incomplete"));
+        QStringList sources;
+        for (int i = 0; i < 300; ++i) sources.append(QString("https://host%1.example").arg(i));
+        const QString large = "script-src " + sources.join(' ');
+        chk("intersection work limit is explicit", has(keys(H({{"Content-Security-Policy", large + ',' + large}}), true), "csp-analysis-incomplete"));
+        QStringList ancestors;
+        for (int i = 1000; i < 1300; ++i) ancestors.append(QString("https://*:%1").arg(i));
+        const QString frames = "frame-ancestors " + ancestors.join(' ');
+        const auto frameKeys = keys(H({{"Content-Security-Policy", frames + ',' + frames}}), true);
+        chk("ancestor intersection limit is explicit", has(frameKeys, "csp-analysis-incomplete"));
+        chk("unresolved ancestors cannot establish missing defense", !has(frameKeys, "clickjacking-missing"));
+        chk("size limit is explicit", has(keys(H({{"Content-Security-Policy", "img-src " + QString(262144, 'a') + ", script-src *"}}), true), "csp-analysis-incomplete"));
+        Result reportOnly;
+        analyze(H({{"Content-Security-Policy-Report-Only", "script-src 'unsafe-inline', img-src *"}}), false, reportOnly);
+        chk("multiple report-only policies preserve result flag", reportOnly.reportOnlyOnly && !reportOnly.hasCsp);
+        bool suffixed = false;
+        for (const auto &f : reportOnly.findings)
+            if (f.key == "csp-unsafe-inline") suffixed = f.detail.contains("report-only -- not enforced");
+        chk("report-only findings describe unenforced policy", suffixed);
     }
 
     // ===== #1 no script governance -> high finding ========================
@@ -210,6 +311,10 @@ int main(int argc, char **argv) {
         !hostMatches("evilexample.com", "*.example.com"));
     chk("hostMatches: a.example.com IS covered by *.example.com",
         hostMatches("a.example.com", "*.example.com"));
+    chk("hostMatches: wildcard source excludes the bare domain",
+        !hostMatches("*.example.com", "example.com"));
+    chk("hostMatches: wildcard catalog entry excludes the bare domain",
+        !hostMatches("example.com", "*.example.com"));
 
     // ===== hostOf ========================================================
     chk("hostOf strips scheme/path/port", hostOf("https://cdn.example.com:443/lib.js") == "cdn.example.com");

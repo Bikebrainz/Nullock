@@ -52,7 +52,10 @@ Result test(const Request &req);
 //   hostOf       -- strip scheme/path/port from a CSP source to its host token.
 //   hostMatches  -- does a CSP source host cover a gadget host (wildcards)?
 //   buildRequest -- render the GET, stripping CR/LF from host/path/query.
-void analyze(const QList<QPair<QString, QString>> &headers, bool effTls, Result &result);
+// origin resolves 'self' in policy intersections; omitted origins are reported
+// as incomplete when a URL-source verdict depends on them.
+void analyze(const QList<QPair<QString, QString>> &headers, bool effTls, Result &result,
+             const QUrl &origin = {});
 void auditCsp(const QString &csp, bool reportOnly, Result &result);
 QMap<QString, QStringList> parseCsp(const QString &csp);
 QString hostOf(QString source);
