@@ -24,6 +24,8 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QString>
 
 #include <cstdio>
@@ -51,6 +53,34 @@ bool runs(const char *b) {
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
+    if (app.arguments().size() == 3 && app.arguments().at(1) == "--can-execute-html") {
+        QList<QPair<QString, QString>> headers;
+        for (const auto &v : QJsonDocument::fromJson(app.arguments().at(2).toUtf8()).array()) {
+            const auto h = v.toArray();
+            if (h.size() == 2) headers.append({h[0].toString(), h[1].toString()});
+        }
+        std::puts(canExecuteHtml(headers) ? "true" : "false");
+        return 0;
+    }
+    struct SniffCase { QStringList values; bool blocked; };
+    const SniffCase sniffCases[] = {
+        {{}, false}, {{"nosniff"}, true}, {{"NoSnIfF"}, true}, {{"\tnosniff\t"}, true},
+        {{"not-nosniff"}, false}, {{"nosniff-extra"}, false}, {{"\"nosniff\""}, false},
+        {{"nosniff;"}, false}, {{"nosniff, invalid"}, false}, {{"invalid, nosniff"}, false},
+        {{"nosniff", "invalid"}, false}, {{"nosniff", "nosniff"}, false},
+        {{"nosniff", ""}, false}, {{"", "nosniff"}, false},
+        {{QString::fromUtf8("noſniff")}, false}, {{QString(QChar(0xa0)) + "nosniff"}, false},
+    };
+    for (const auto &test : sniffCases) {
+        QList<QPair<QString, QString>> headers;
+        for (const auto &value : test.values) headers.append({"X-Content-Type-Options", value});
+        const auto label = ("document sniffing gate: " + test.values.join(" | ")).toUtf8();
+        chk(label.constData(), canExecuteHtml(headers) != test.blocked);
+        headers.append(qMakePair(QStringLiteral("Content-Type"), QStringLiteral("text/html")));
+        chk("explicit HTML remains executable with nosniff", canExecuteHtml(headers));
+        headers.last().second = "text/plain";
+        chk("explicit plain text remains non-HTML", !canExecuteHtml(headers));
+    }
 
     // ===== POSITIVES: marker runs in element content =====================
     chk("plain element content -> runs",

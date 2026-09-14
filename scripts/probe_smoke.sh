@@ -347,6 +347,18 @@ def make(mode):
                                     b'</head><body>home</body></html>'); return
                 self._send(200, b'<html>ok</html>'); return
             if mode.startswith('hdr-'):
+                if mode == 'hdr-values':
+                    variants = {
+                        '/lookalike': [('X-Content-Type-Options', 'not-nosniff')],
+                        '/nonbreaking-space': [('X-Content-Type-Options', '\u00a0nosniff\u00a0')],
+                        '/referrer-nonbreaking-space': [('Referrer-Policy', '\u00a0unsafe-url\u00a0')],
+                        '/first-valid': [('X-Content-Type-Options', 'nosniff'), ('X-Content-Type-Options', 'invalid')],
+                        '/first-invalid': [('X-Content-Type-Options', 'invalid'), ('X-Content-Type-Options', 'nosniff')],
+                        '/fallback': [('Referrer-Policy', 'unsafe-url'), ('Referrer-Policy', 'future-policy')],
+                        '/override': [('Referrer-Policy', 'unsafe-url'), ('Referrer-Policy', 'no-referrer')],
+                        '/malformed': [('Referrer-Policy', 'unsafe-url, no-referrer;')],
+                    }
+                    self._send(200, b'<html>ok</html>', 'text/html', variants.get(self.path, [])); return
                 # Security-header audit. Each mode returns a response carrying one
                 # interesting header so the analyzer's headline fixes are checked
                 # end-to-end (HSTS modes need TLS, so they're unit-tested only).
@@ -795,14 +807,16 @@ def make(mode):
                     # The marker lands inside the open tag (inert) -> must NOT be
                     # flagged: regression-locks the headline attribute-quote FP.
                     self._send(200, ('<input data-x="a>b" value=%s>' % val).encode()); return
-                if mode == 'xss-nosniff':
-                    # Reflect the marker RAW in element content, but send NO
-                    # Content-Type plus X-Content-Type-Options: nosniff, so a
-                    # browser won't sniff it as HTML -> not executable -> must NOT
-                    # be flagged.
+                if mode in ('xss-nosniff', 'xss-nosniff-invalid', 'xss-nosniff-combined', 'xss-nosniff-repeated'):
+                    # Untyped documents stop sniffing only for a single exact
+                    # nosniff value. Malformed, comma-combined and repeated
+                    # variants still execute the raw element-content reflection.
                     body = ('<html><body>Results for: %s</body></html>' % val).encode()
                     self.send_response(200)
-                    self.send_header('X-Content-Type-Options', 'nosniff')
+                    values = {'xss-nosniff': ['nosniff'], 'xss-nosniff-invalid': ['not-nosniff'],
+                              'xss-nosniff-combined': ['nosniff, invalid'],
+                              'xss-nosniff-repeated': ['nosniff', 'nosniff']}[mode]
+                    for value in values: self.send_header('X-Content-Type-Options', value)
                     self.send_header('Content-Length', str(len(body))); self.end_headers()
                     self.wfile.write(body); return
                 if mode != 'xss-vuln':
@@ -1045,7 +1059,7 @@ PY
 MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie hh-host-loc hh-urlattr
        sqli-vuln sqli-safe sqli-blind sqli-waf
-       xss-vuln xss-safe xss-attr xss-nosniff
+       xss-vuln xss-safe xss-attr xss-nosniff xss-nosniff-invalid xss-nosniff-combined xss-nosniff-repeated
        crlf-vuln crlf-colonless crlf-safe
        crlf-post-vuln crlf-post-safe crlf-hdr-vuln crlf-hdr-safe
        method-allow method-trace method-trace-fp method-405 method-track
@@ -1082,7 +1096,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        secrets-vuln secrets-example
        fp-prose fp-real
        waf-detect waf-clean
-       hdr-noscript hdr-wildcard hdr-xfo-allowall hdr-multiple hdr-self hdr-frame-precedence
+       hdr-noscript hdr-wildcard hdr-xfo-allowall hdr-multiple hdr-self hdr-frame-precedence hdr-values
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -1160,6 +1174,9 @@ chk "xss vulnerable -> confirmed"       "$(post /api/xss/test "{\"url\":\"$(url 
 chk "xss safe -> not vulnerable"        "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-safe]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "xss attr-context (raw, but in attribute) -> NOT vulnerable (headline FP fix)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-attr]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "xss raw reflection but nosniff+no-CT -> NOT vulnerable (sniff guard)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-nosniff]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+for variant in xss-nosniff-invalid xss-nosniff-combined xss-nosniff-repeated; do
+  chk "xss untyped reflection remains executable ($variant)" "$(post /api/xss/test "{\"url\":\"$(url ${P[$variant]} '?q=test')\"}")" "d.get('ok') and d.get('vulnerable')"
+done
 
 echo "== HTTP method audit =="
 chk "method: advertised write methods -> INFO not medium (severity honesty)" "$(post /api/methods/test "{\"url\":\"$(url ${P[method-allow]} '')\"}")" "any(f['kind']=='dangerous-http-methods' and f['severity']=='info' for f in d.get('findings',[]))"
@@ -1363,6 +1380,14 @@ for variant in '' 'reverse' 'combined' 'combined-reverse'; do
 done
 chk "hdr: fetch propagates response origin for self" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-self]} '')\"}")" "d.get('ok') and d.get('hasCsp') and not any(f['key'] in ('csp-wildcard-source','csp-analysis-incomplete') for f in d.get('findings',[]))"
 chk "hdr: enforced ancestors override XFO" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-frame-precedence]} '')\"}")" "d.get('ok') and any(f['key']=='clickjacking-missing' for f in d.get('findings',[]))"
+for variant in lookalike first-invalid nonbreaking-space; do
+  chk "hdr: invalid first nosniff value ($variant)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} "$variant")\"}")" "d.get('ok') and any(f['key']=='xcto-missing' for f in d.get('findings',[]))"
+done
+chk "hdr: first valid nosniff field applies" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} 'first-valid')\"}")" "d.get('ok') and not any(f['key']=='xcto-missing' for f in d.get('findings',[]))"
+chk "hdr: unknown fallback retains unsafe referrer policy" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} 'fallback')\"}")" "d.get('ok') and any(f['key']=='referrer-policy-unsafe' for f in d.get('findings',[]))"
+chk "hdr: later recognized referrer policy wins" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} 'override')\"}")" "d.get('ok') and not any(f['key'] in ('referrer-policy-unsafe','referrer-policy-missing') for f in d.get('findings',[]))"
+chk "hdr: referrer header preserves nonbreaking spaces" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} 'referrer-nonbreaking-space')\"}")" "d.get('ok') and any(f['key']=='referrer-policy-missing' for f in d.get('findings',[])) and not any(f['key']=='referrer-policy-unsafe' for f in d.get('findings',[]))"
+chk "hdr: malformed referrer policy invalidates header" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} 'malformed')\"}")" "d.get('ok') and any(f['key']=='referrer-policy-missing' for f in d.get('findings',[])) and not any(f['key']=='referrer-policy-unsafe' for f in d.get('findings',[]))"
 
 echo "== token sequencer =="
 chk "seq: 8-hex tokens (~32 effective bits) -> NOT looks-random (keyspace)" "$(post /api/sequencer/analyze "{\"tokens\":[\"1a2b3c4d\",\"9f8e7d6c\",\"00112233\",\"deadbeef\",\"cafe1234\",\"5566aabb\",\"0f1e2d3c\",\"98765432\",\"abcdef01\",\"13579bdf\"]}")" "d.get('verdict')!='looks-random' and d.get('score',100)<80"

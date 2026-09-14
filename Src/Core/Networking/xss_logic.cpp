@@ -8,6 +8,7 @@
 // plain Request struct), never on a parsed response object.
 
 #include "xss_reflected.hpp"
+#include "response_header_values.hpp"
 
 #include <QUrl>
 #include <QUrlQuery>
@@ -20,6 +21,17 @@ bool isHtmlContentType(const QString &contentTypeLower) {
     return contentTypeLower.isEmpty()
         || contentTypeLower.contains("text/html")
         || contentTypeLower.contains("application/xhtml");
+}
+
+bool canExecuteHtml(const QList<QPair<QString, QString>> &headers) {
+    QString contentType;
+    for (const auto &h : headers)
+        if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) {
+            contentType = h.second.toLower();
+            break;
+        }
+    if (contentType.isEmpty() && ResponseHeaderValues::nosniffForDocuments(headers)) return false;
+    return isHtmlContentType(contentType);
 }
 
 // Would "<marker>" at offset `at` be parsed as a start tag -- i.e. it's in

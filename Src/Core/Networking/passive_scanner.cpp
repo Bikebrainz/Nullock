@@ -2,6 +2,7 @@
 #include "finding_enricher.hpp"
 #include "cve_database.hpp"
 #include "jwt_tool.hpp"
+#include "response_header_values.hpp"
 
 #include <QDateTime>
 #include <QMutexLocker>
@@ -264,10 +265,6 @@ void PassiveScanner::checkResponse(int rowId,
               "No Strict-Transport-Security header on TLS resp",  "medium" },
             { "X-Frame-Options", "missing-xfo",
               "No X-Frame-Options header (clickjacking risk)",    "low" },
-            { "X-Content-Type-Options", "missing-xcto",
-              "No X-Content-Type-Options: nosniff",               "low" },
-            { "Referrer-Policy", "missing-rp",
-              "No Referrer-Policy header",                        "info" },
         };
         for (const auto &r : rules) {
             const QString v = headerOf(resp.headers, r.header);
@@ -278,6 +275,14 @@ void PassiveScanner::checkResponse(int rowId,
                            QString("absent on %1").arg(req.host));
             }
         }
+        if (!ResponseHeaderValues::nosniffForScriptsAndStyles(resp.headers))
+            addFinding(rowId, req, resp, "low", "missing-xcto",
+                "No effective X-Content-Type-Options: nosniff",
+                "the first header-list value must be the nosniff token to enforce script/style MIME types");
+        if (ResponseHeaderValues::referrerPolicy(resp.headers).isEmpty())
+            addFinding(rowId, req, resp, "info", "missing-rp",
+                "No valid Referrer-Policy response header",
+                "browser defaults or an inherited policy apply; configure an explicit policy for this response");
     }
 
     // Set-Cookie hardening flags. Most servers set the cookie multiple

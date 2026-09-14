@@ -124,6 +124,24 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "example.test", "/"),
         makeResp(200, "text/html", "<html>x</html>", {{"Referrer-Policy", "no-referrer"}}) });
 
+    for (const auto &value : QStringList{"not-nosniff", "nosniff-extra", "\"nosniff\"", "nosniff;", "invalid, nosniff"})
+        tc.append({ "invalid nosniff cannot suppress missing-xcto", "missing-xcto", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "text/html", "<html>x</html>", {{"X-Content-Type-Options", value}}) });
+    tc.append({ "first nosniff value protects scripts", "missing-xcto", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>", {{"X-Content-Type-Options", "nosniff, invalid"}}) });
+    tc.append({ "later nosniff field cannot rescue invalid first field", "missing-xcto", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>", {{"X-Content-Type-Options", "invalid"}, {"X-Content-Type-Options", "nosniff"}}) });
+    for (const auto &value : QStringList{"future-policy", "\"unsafe-url\"", "unsafe-url;", "unsafe-url, future2"})
+        tc.append({ "invalid referrer policy does not count as configured", "missing-rp", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "text/html", "<html>x</html>", {{"Referrer-Policy", value}}) });
+    tc.append({ "unknown referrer fallback retains recognized policy", "missing-rp", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>", {{"Referrer-Policy", "no-referrer"}, {"Referrer-Policy", "future-policy"}}) });
+
     // ---- Subresource Integrity (cross-origin scripts) ------------------
     tc.append({ "cross-origin script without SRI", "sri-missing", false,
         makeReq("GET", "example.test", "/"),

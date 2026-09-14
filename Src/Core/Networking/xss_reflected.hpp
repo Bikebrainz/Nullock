@@ -60,6 +60,8 @@ QStringList defaultParams();
 //                   and dropping any CR/LF-bearing carried header.
 //   queryWith -- set `param` to `value` (percent-encoded), preserving others.
 bool isHtmlContentType(const QString &contentTypeLower);
+// Header-level gate for an HTML response or a document that can be sniffed as HTML.
+bool canExecuteHtml(const QList<QPair<QString, QString>> &headers);
 bool inExecutingHtmlContext(const QString &body, int at);
 QByteArray buildRequest(const Request &req, const QString &query);
 QString queryWith(const QString &existing, const QString &param, const QString &value);

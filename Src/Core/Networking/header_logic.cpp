@@ -8,6 +8,7 @@
 
 #include "header_audit.hpp"
 #include "csp_intersection.hpp"
+#include "response_header_values.hpp"
 
 #include <QMap>
 #include <QRegularExpression>
@@ -301,8 +302,7 @@ void analyze(const Headers &headers, bool effTls, Result &result, const QUrl &or
                     "subdomains remain strippable");
         }
     }
-    const QString xcto = headerValue(headers, "X-Content-Type-Options");
-    if (!xcto.contains("nosniff", Qt::CaseInsensitive))
+    if (!ResponseHeaderValues::nosniffForScriptsAndStyles(headers))
         add("xcto-missing", "low", "No X-Content-Type-Options: nosniff",
             "MIME sniffing can turn an uploaded/served file into executable script");
 
@@ -338,11 +338,11 @@ void analyze(const Headers &headers, bool effTls, Result &result, const QUrl &or
     // (query and all) to every destination, which is exactly the leak this finding
     // exists to raise -- so the weakest possible value used to SUPPRESS it.
     {
-        const QString rp = headerValue(headers, "Referrer-Policy").trimmed().toLower();
+        const QString rp = ResponseHeaderValues::referrerPolicy(headers);
         if (rp.isEmpty())
-            add("referrer-policy-missing", "low", "No Referrer-Policy",
-                "full URLs (with tokens in query) may leak to third parties via Referer");
-        else if (rp.split(',').last().trimmed() == QLatin1String("unsafe-url"))
+            add("referrer-policy-missing", "low", "No valid Referrer-Policy response header",
+                "browser defaults or an inherited policy apply; configure an explicit policy for this response");
+        else if (rp == QLatin1String("unsafe-url"))
             add("referrer-policy-unsafe", "low", "Referrer-Policy: unsafe-url",
                 "unsafe-url sends the full URL (including query tokens) to every "
                 "destination -- weaker than having no policy on modern browsers");
