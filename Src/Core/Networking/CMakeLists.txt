@@ -166,6 +166,8 @@ add_library(Networking STATIC
     open_redirect.hpp
     header_audit.cpp
     header_logic.cpp
+    response_header_values.cpp
+    response_header_values.hpp
     csp_intersection.cpp
     csp_intersection.hpp
     header_audit.hpp

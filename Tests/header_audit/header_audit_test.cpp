@@ -16,6 +16,7 @@
 // Run via:  ctest -R header_audit -V
 
 #include "header_audit.hpp"
+#include "response_header_values.hpp"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -64,9 +65,14 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    if (app.arguments().size() == 3 && app.arguments().at(1) == "--analyze-headers") {
+    if (app.arguments().size() == 3 && (app.arguments().at(1) == "--analyze-headers"
+                                      || app.arguments().at(1) == "--analyze-values")) {
         const auto input = QJsonDocument::fromJson(app.arguments().at(2).toUtf8()).object();
         HdrList headers;
+        for (const auto &v : input.value("headers").toArray()) {
+            const auto h = v.toArray();
+            if (h.size() == 2) headers.append({h[0].toString(), h[1].toString()});
+        }
         for (const auto &v : input.value("csp").toArray()) headers.append({"Content-Security-Policy", v.toString()});
         for (const auto &v : input.value("reportOnly").toArray()) headers.append({"Content-Security-Policy-Report-Only", v.toString()});
         if (input.contains("xfo")) headers.append({"X-Frame-Options", input.value("xfo").toString()});
@@ -75,9 +81,60 @@ int main(int argc, char **argv) {
         analyze(headers, origin.scheme() == "https", result, origin);
         QStringList findings;
         for (const auto &f : result.findings) findings.append(f.key);
+        if (app.arguments().at(1) == "--analyze-values") {
+            using namespace Nullock::Core::ResponseHeaderValues;
+            const QJsonObject values{{"scriptNosniff", nosniffForScriptsAndStyles(headers)},
+                {"documentNosniff", nosniffForDocuments(headers)},
+                {"referrerPolicy", referrerPolicy(headers)},
+                {"findings", QJsonArray::fromStringList(findings)}};
+            const auto json = QJsonDocument(values).toJson(QJsonDocument::Compact);
+            std::fwrite(json.constData(), 1, json.size(), stdout);
+            return 0;
+        }
         const auto json = QJsonDocument(QJsonArray::fromStringList(findings)).toJson(QJsonDocument::Compact);
         std::fwrite(json.constData(), 1, json.size(), stdout);
         return 0;
+    }
+
+    struct ValueCase { QStringList values; bool expected; };
+    const ValueCase sniffCases[] = {
+        {{}, false}, {{"nosniff"}, true}, {{"NoSnIfF"}, true}, {{"\tnosniff\t"}, true},
+        {{"not-nosniff"}, false}, {{"nosniff-extra"}, false}, {{"\"nosniff\""}, false},
+        {{"nosniff;"}, false}, {{"nosniff invalid"}, false}, {{"nosniff, invalid"}, true},
+        {{"invalid, nosniff"}, false}, {{"", "nosniff"}, false}, {{",nosniff"}, false},
+        {{"nosniff", "invalid"}, true}, {{"invalid", "nosniff"}, false},
+        {{"nosniff", "nosniff"}, true}, {{QString::fromUtf8("noſniff")}, false},
+        {{QString(QChar(0xa0)) + "nosniff" + QChar(0xa0)}, false},
+    };
+    for (const auto &test : sniffCases) {
+        HdrList headers;
+        for (const auto &value : test.values) headers.append({"X-Content-Type-Options", value});
+        const auto label = ("nosniff value parsing: " + test.values.join(" | ")).toUtf8();
+        chk(label.constData(), !has(keys(headers, false), "xcto-missing") == test.expected);
+    }
+    struct ReferrerCase { QStringList values; bool valid; bool unsafe; };
+    const ReferrerCase referrerCases[] = {
+        {{}, false, false}, {{"unsafe-url"}, true, true}, {{"UNSAFE-URL"}, true, true},
+        {{"unsafe-url, future-policy"}, true, true}, {{"unsafe-url, no-referrer"}, true, false},
+        {{"no-referrer", "unsafe-url"}, true, true}, {{"unsafe-url", "no-referrer"}, true, false},
+        {{"unsafe-url", "future-policy"}, true, true}, {{"unsafe-url", ""}, true, true},
+        {{"unsafe-url,"}, true, true}, {{"future-policy"}, false, false},
+        {{"\"unsafe-url\""}, false, false}, {{"unsafe-url;"}, false, false},
+        {{"unsafe-url, future2"}, false, false}, {{"unsafe-url, future_policy"}, false, false},
+        {{"unsafe-url, \"future,no-referrer\""}, false, false},
+        {{"unsafe-url, no-referrer;"}, false, false}, {{"never"}, false, false},
+        {{"always"}, false, false}, {{"same-origin"}, true, false},
+        {{"origin"}, true, false}, {{"origin-when-cross-origin"}, true, false},
+        {{"strict-origin"}, true, false}, {{"strict-origin-when-cross-origin"}, true, false},
+        {{"no-referrer-when-downgrade"}, true, false},
+    };
+    for (const auto &test : referrerCases) {
+        HdrList headers;
+        for (const auto &value : test.values) headers.append({"Referrer-Policy", value});
+        const auto findings = keys(headers, false);
+        const auto label = ("referrer value parsing: " + test.values.join(" | ")).toUtf8();
+        chk(label.constData(), !has(findings, "referrer-policy-missing") == test.valid);
+        chk(label.constData(), has(findings, "referrer-policy-unsafe") == test.unsafe);
     }
 
     // Repeated fields and comma-combined fields represent the same policy list.

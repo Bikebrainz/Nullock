@@ -50,6 +50,9 @@ The CSP browser comparisons run with `node Tests/ui/csp_browser_test.cjs <header
 and `node Tests/ui/csp_policy_browser_test.cjs <header_audit_test>` after installing
 `Tests/ui` dependencies and Chromium as shown in CI. They compare the production
 analyzer with single, repeated and comma-combined response policies.
+`node Tests/ui/header_values_browser_test.cjs <header_audit_test> <xss_reflected_test>`
+compares MIME sniffing and referrer-policy decisions with actual browser requests,
+including malformed values and repeated fields.
 `replay_fuzz_corpus.py <build-dir>` replays committed parser seeds against built
 fuzz harnesses. `container_smoke.py <base-url>` checks the container service;
 use the fixture setup and environment from CI.

@@ -17,22 +17,6 @@ namespace {
 
 constexpr int kMaxSends = 90;
 
-QString headerValue(const Proxy::HttpResponse &r, const QString &name) {
-    for (const auto &h : r.headers)
-        if (h.first.compare(name, Qt::CaseInsensitive) == 0) return h.second;
-    return QString();
-}
-
-bool isHtmlResponse(const Proxy::HttpResponse &r) {
-    const QString ct = headerValue(r, "Content-Type").toLower();
-    // A browser only sniffs a typeless body as HTML when nosniff is absent; with
-    // X-Content-Type-Options: nosniff an empty/non-HTML type never executes.
-    if (ct.isEmpty()
-        && headerValue(r, "X-Content-Type-Options").toLower().contains("nosniff"))
-        return false;
-    return isHtmlContentType(ct);
-}
-
 QString randMarker() {
     static const char hex[] = "0123456789abcdef";
     QString s = QStringLiteral("nlk");
@@ -94,7 +78,7 @@ Result test(const Request &reqIn) {
         // Must be an HTML response, the tag must reflect with raw (unencoded)
         // angle brackets, and that reflection must sit in element content --
         // not a comment, raw-text element, or attribute -- to actually run.
-        if (!isHtmlResponse(r.parsed)) continue;
+        if (!canExecuteHtml(r.parsed.headers)) continue;
         const QString body = QString::fromUtf8(r.parsed.body);
         // Check EVERY occurrence, case-insensitively: an app may normalize the
         // value's case, and the first reflection may be inert (a comment or

@@ -10,6 +10,13 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Response header validation
+- Validate effective `nosniff` and Referrer-Policy values in active and passive
+  header checks, including repeated fields, fallback keywords and malformed tokens.
+- Keep script/style MIME enforcement separate from document sniffing so malformed
+  or combined `nosniff` values cannot hide an executable reflected-XSS response.
+  Compare both decisions with real Chromium responses in CI.
+
 ### Documentation
 - Refresh project copy and historical review references, and replace temporary
   roadmap branch labels with verified commit IDs. Triage and payload-generation
