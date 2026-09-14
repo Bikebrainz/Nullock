@@ -350,6 +350,8 @@ def make(mode):
                 if mode == 'hdr-values':
                     variants = {
                         '/lookalike': [('X-Content-Type-Options', 'not-nosniff')],
+                        '/nonbreaking-space': [('X-Content-Type-Options', '\u00a0nosniff\u00a0')],
+                        '/referrer-nonbreaking-space': [('Referrer-Policy', '\u00a0unsafe-url\u00a0')],
                         '/first-valid': [('X-Content-Type-Options', 'nosniff'), ('X-Content-Type-Options', 'invalid')],
                         '/first-invalid': [('X-Content-Type-Options', 'invalid'), ('X-Content-Type-Options', 'nosniff')],
                         '/fallback': [('Referrer-Policy', 'unsafe-url'), ('Referrer-Policy', 'future-policy')],
@@ -1378,12 +1380,13 @@ for variant in '' 'reverse' 'combined' 'combined-reverse'; do
 done
 chk "hdr: fetch propagates response origin for self" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-self]} '')\"}")" "d.get('ok') and d.get('hasCsp') and not any(f['key'] in ('csp-wildcard-source','csp-analysis-incomplete') for f in d.get('findings',[]))"
 chk "hdr: enforced ancestors override XFO" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-frame-precedence]} '')\"}")" "d.get('ok') and any(f['key']=='clickjacking-missing' for f in d.get('findings',[]))"
-for variant in lookalike first-invalid; do
+for variant in lookalike first-invalid nonbreaking-space; do
   chk "hdr: invalid first nosniff value ($variant)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} "$variant")\"}")" "d.get('ok') and any(f['key']=='xcto-missing' for f in d.get('findings',[]))"
 done
 chk "hdr: first valid nosniff field applies" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} 'first-valid')\"}")" "d.get('ok') and not any(f['key']=='xcto-missing' for f in d.get('findings',[]))"
 chk "hdr: unknown fallback retains unsafe referrer policy" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} 'fallback')\"}")" "d.get('ok') and any(f['key']=='referrer-policy-unsafe' for f in d.get('findings',[]))"
 chk "hdr: later recognized referrer policy wins" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} 'override')\"}")" "d.get('ok') and not any(f['key'] in ('referrer-policy-unsafe','referrer-policy-missing') for f in d.get('findings',[]))"
+chk "hdr: referrer header preserves nonbreaking spaces" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} 'referrer-nonbreaking-space')\"}")" "d.get('ok') and any(f['key']=='referrer-policy-missing' for f in d.get('findings',[])) and not any(f['key']=='referrer-policy-unsafe' for f in d.get('findings',[]))"
 chk "hdr: malformed referrer policy invalidates header" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-values]} 'malformed')\"}")" "d.get('ok') and any(f['key']=='referrer-policy-missing' for f in d.get('findings',[])) and not any(f['key']=='referrer-policy-unsafe' for f in d.get('findings',[]))"
 
 echo "== token sequencer =="

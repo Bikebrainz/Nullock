@@ -32,6 +32,10 @@ const referrerCases = [
   [['strict-origin-when-cross-origin'], 'strict-origin-when-cross-origin'],
 ];
 function invoke(executable, flag, input) {
+  if (flag === '--analyze-values') {
+    input.rawHeaders = 'HTTP/1.1 200 OK\r\n' + input.headers.map(([k, v]) => `${k}: ${v}\r\n`).join('');
+    delete input.headers;
+  }
   const result = spawnSync(executable, [flag, JSON.stringify(input)], { encoding: 'utf8', timeout: 15000 });
   assert.ifError(result.error);
   assert.equal(result.status, 0, result.stderr);

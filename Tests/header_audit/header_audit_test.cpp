@@ -17,6 +17,7 @@
 
 #include "header_audit.hpp"
 #include "response_header_values.hpp"
+#include "networking_logic.hpp"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -69,6 +70,8 @@ int main(int argc, char **argv) {
                                       || app.arguments().at(1) == "--analyze-values")) {
         const auto input = QJsonDocument::fromJson(app.arguments().at(2).toUtf8()).object();
         HdrList headers;
+        if (input.contains("rawHeaders"))
+            headers = Nullock::Core::NetworkingLogic::parseHeaders(input.value("rawHeaders").toString().toLatin1());
         for (const auto &v : input.value("headers").toArray()) {
             const auto h = v.toArray();
             if (h.size() == 2) headers.append({h[0].toString(), h[1].toString()});

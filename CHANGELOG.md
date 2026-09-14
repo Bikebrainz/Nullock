@@ -13,6 +13,8 @@ developer-facing record.
 ### Response header validation
 - Validate effective `nosniff` and Referrer-Policy values in active and passive
   header checks, including repeated fields, fallback keywords and malformed tokens.
+- Preserve nonbreaking spaces and other non-HTTP-whitespace bytes when parsing
+  header values so normalization cannot turn malformed values into valid tokens.
 - Keep script/style MIME enforcement separate from document sniffing so malformed
   or combined `nosniff` values cannot hide an executable reflected-XSS response.
   Compare both decisions with real Chromium responses in CI.
