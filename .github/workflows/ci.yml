@@ -108,6 +108,8 @@ jobs:
         run: bash -n bin/nullock
       - name: project notes and Intruder workspace CLI contracts
         run: python3 scripts/annotations_cli_test.py
+      - name: Repeater CLI history and asynchronous send contracts
+        run: python3 scripts/repeater_cli_test.py
 
   build-windows:
     name: build NullockApp (Windows)
@@ -243,7 +245,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             cmake ninja-build build-essential \
-            libnghttp2-dev libssl-dev patchelf libxcb-cursor0 rpm dpkg-dev imagemagick wget ccache
+            libnghttp2-dev libssl-dev patchelf libxcb-cursor0 rpm dpkg-dev imagemagick wget ccache jq
       - name: restore compiler cache
         id: compiler-cache
         uses: actions/cache/restore@v4
@@ -281,6 +283,7 @@ jobs:
           python3 scripts/scanner_sessions_regression.py "$APP"
           python3 scripts/workspace_recovery_regression.py "$APP"
           python3 scripts/control_responsiveness_regression.py "$APP"
+          python3 scripts/repeater_cli_runtime.py "$APP"
       - name: build and verify Linux packages
         run: |
           cpack --config build/CPackConfig.cmake -G 'DEB;RPM;TGZ' -B packages

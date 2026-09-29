@@ -32,7 +32,8 @@ QA + scope conversations.
       overall summary pills, optional method-mix bar
 - [x] **REPEATER** — tab strip (add / activate / rename / duplicate /
       close), per-tab host / port / TLS / request / response,
-      send-to-repeater opens new tab
+      send-to-repeater opens a new tab with full captured bytes; nonblocking send
+      and Stop (after the current response); CLI load by history ID, send and stop
 - [x] **INTERCEPT** — toggle, queue with depth indicator, current
       request editable, forward / drop / forward-all
 - [x] **INTRUDER** — Sniper mode template + payloads + results table
@@ -99,7 +100,7 @@ QA + scope conversations.
 - `POST /api/scope/{in,out}/{add,remove}`
 - `POST /api/scope/notes`
 - `POST /api/rules/{add,update,remove,toggle,move}`
-- `POST /api/repeater/{set,send,clear,tab/{add,addFromHistory,close,activate,rename,duplicate}}`
+- `POST /api/repeater/{set,send,stop,clear,tab/{add,addFromHistory,addFromHistoryId,close,activate,rename,duplicate}}`
 - `POST /api/intruder/{set,start,stop,clear,resend}`
 - `POST /api/theme` / `/api/theme/save-as` / `/api/theme/reload`
 - `POST /api/clear-history`, `/api/mitm/clear-blocked`

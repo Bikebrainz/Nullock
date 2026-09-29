@@ -304,7 +304,7 @@ jsonq() {
 }
 
 cmd_repeater() {
-    # nullock repeater {set|send|show|response|clear|load|tabs|tab ...}
+    # nullock repeater {set|send|stop|show|response|clear|load|tabs|tab ...}
     case ${1:-} in
         set)
             # nullock repeater set <host> <port> <tls:true|false> [request-file|-]
@@ -321,19 +321,28 @@ cmd_repeater() {
             ;;
         send)
             # Fire and wait briefly for the response to settle into snapshot.
-            post /api/repeater/send >/dev/null
-            local i=0
+            local response
+            response=$(post /api/repeater/send)
+            "$JQ" -e '.ok == true' <<< "$response" >/dev/null || die "$response"
+            local i=0 busy=true current
             while (( i < 60 )); do
-                local busy
-                busy=$(snapshot | "$JQ" -r '.repeater.busy')
+                current=$(snapshot)
+                busy=$(printf '%s\n' "$current" | "$JQ" -r '.repeater.busy')
                 [[ $busy == false ]] && break
                 sleep 0.25
-                ((i++))
+                i=$((i + 1))
             done
-            snapshot | "$JQ" '{
+            [[ $busy == false ]] || die "Repeater is still running; use 'nullock repeater response' later or 'nullock repeater stop'."
+            printf '%s\n' "$current" | "$JQ" '{
                 status: .repeater.statusLine,
                 response: (.repeater.response | .[0:2000])
             }'
+            ;;
+        stop)
+            local response
+            response=$(post /api/repeater/stop)
+            "$JQ" -e '.ok == true' <<< "$response" >/dev/null || die "$response"
+            printf '%s\n' "$response" | pp
             ;;
         show)
             # Show the loaded request that would be fired next.
@@ -351,12 +360,14 @@ cmd_repeater() {
             post /api/repeater/clear | pp
             ;;
         load)
-            # nullock repeater load <row-id>  -- pull a captured row into the active tab.
+            # A history ID is stable across window eviction; it is not a row index.
             [[ -n ${2-} ]] || die "usage: nullock repeater load <row-id>"
             local row=$2
-            # Two API options: history/<id>/request gives us the bytes; the cleaner
-            # path is the tab/addFromHistory endpoint (also wraps a fresh tab).
-            post /api/repeater/tab/addFromHistory "{\"row\":$row}" | pp
+            [[ $row =~ ^[1-9][0-9]*$ ]] || die "row-id must be a positive integer"
+            local response
+            response=$(post /api/repeater/tab/addFromHistoryId "{\"id\":$row}")
+            "$JQ" -e '.ok == true' <<< "$response" >/dev/null || die "$response"
+            printf '%s\n' "$response" | pp
             ;;
         tabs)
             snapshot | "$JQ" '{
@@ -384,7 +395,7 @@ cmd_repeater() {
                 *) die "usage: nullock repeater tab {add|close|activate|rename|duplicate}" ;;
             esac
             ;;
-        *) die "usage: nullock repeater {set|send|show|response|clear|load|tabs|tab ...}" ;;
+        *) die "usage: nullock repeater {set|send|stop|show|response|clear|load|tabs|tab ...}" ;;
     esac
 }
 
@@ -1769,6 +1780,7 @@ Repeater:
   nullock repeater set <host> <port> <tls> [request-file|-]
                                  load a request to fire (file or stdin)
   nullock repeater send          fire the active tab + return status + body preview
+  nullock repeater stop          stop after the current response; skip later redirects
   nullock repeater show          inspect the loaded request
   nullock repeater response      raw response body from the last send
   nullock repeater load <row-id> add a captured row as a fresh tab
