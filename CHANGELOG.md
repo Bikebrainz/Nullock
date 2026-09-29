@@ -10,6 +10,12 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Build follow-up
+- Add the September 29 to-do list with reproduced gaps and acceptance checks.
+- Correct stale scope-enforcement evidence and distinguish native QML Send
+  behavior from asynchronous browser/API/CLI sends.
+- Label roadmap grade changes as changes, including downward corrections.
+
 ### Repeater CLI and roadmap
 - Report response presence per tab instead of treating missing response text as
   a completed response. Clear elapsed-time and byte-count metadata on duplicated
