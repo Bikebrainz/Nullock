@@ -53,6 +53,12 @@ bool runs(const char *b) {
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
+    if (app.arguments().size() == 3 && app.arguments().at(1) == "--html-context") {
+        const QString body = QJsonDocument::fromJson(app.arguments().at(2).toUtf8()).array().first().toString();
+        const int at = body.indexOf(TAG, 0, Qt::CaseInsensitive);
+        std::puts(at >= 0 && inExecutingHtmlContext(body, at) ? "true" : "false");
+        return 0;
+    }
     if (app.arguments().size() == 3 && app.arguments().at(1) == "--can-execute-html") {
         QList<QPair<QString, QString>> headers;
         for (const auto &v : QJsonDocument::fromJson(app.arguments().at(2).toUtf8()).array()) {
@@ -168,6 +174,68 @@ int main(int argc, char **argv) {
     chk("CT application/xhtml+xml -> HTML", isHtmlContentType("application/xhtml+xml"));
     chk("CT application/json -> NOT HTML", !isHtmlContentType("application/json"));
     chk("CT text/plain -> NOT HTML", !isHtmlContentType("text/plain"));
+
+    struct MediaCase { QStringList values; bool html; bool sniffed; };
+    const MediaCase mediaCases[] = {
+        {{}, true, true}, {{""}, true, true}, {{";"}, true, true},
+        {{"nosuch"}, true, true}, {{"text /html"}, true, true},
+        {{"unknown/unknown"}, true, true}, {{"application/unknown"}, true, true},
+        {{"*/*"}, true, true},
+        {{"text/plain", "*/*"}, false, false},
+        {{"text/plain", "*/*; charset=utf-8"}, true, true},
+        {{"*/*; charset=utf-8"}, true, true},
+        {{"text/html"}, true, false}, {{"TEXT/HTML"}, true, false},
+        {{"\ttext/html "}, true, false}, {{"text/html ; charset=utf-8"}, true, false},
+        {{"text/html(comment)"}, true, false}, {{"text/html extra"}, true, false},
+        {{"application/xhtml+xml"}, true, false},
+        {{"text/plain; note=text/html"}, false, false},
+        {{"application/json; note=\"text/html\""}, false, false},
+        {{"text/htmlx"}, false, false}, {{"application/xhtml"}, false, false},
+        {{"application/xhtml+xml-extra"}, false, false},
+        {{"application/octet-stream"}, false, false},
+        {{QString(QChar(0xa0)) + "text/html" + QChar(0xa0)}, false, false},
+        {{"text/plain", "text/html"}, true, false},
+        {{"text/html", "text/plain"}, false, false},
+        {{"text/html, text/plain"}, false, false},
+        {{"text/plain, text/html"}, true, false},
+        {{"text/html", ""}, true, false}, {{"", "text/html"}, true, false},
+        {{"text/html", "nosuch"}, true, false},
+        {{"text/html", "text /plain"}, true, false},
+        {{"text/plain; note=\"a,text/html\""}, false, false},
+        {{"text/html; note=\"a,text/plain\""}, true, false},
+        {{"text/html; note=\"a,\\\"text/plain\""}, true, false},
+    };
+    for (const auto &test : mediaCases) {
+        QList<QPair<QString, QString>> headers;
+        for (const auto &value : test.values) headers.append({"Content-Type", value});
+        const auto label = ("effective media type: " + test.values.join(" | ")).toUtf8();
+        chk(label.constData(), canExecuteHtml(headers) == test.html);
+        if (test.values.size() == 1)
+            chk(label.constData(), isHtmlContentType(test.values.first()) == test.html);
+        headers.append(qMakePair(QStringLiteral("X-Content-Type-Options"), QStringLiteral("nosniff")));
+        chk(label.constData(), canExecuteHtml(headers) == (test.html && !test.sniffed));
+    }
+
+    // Raw-text behavior belongs to exact HTML tag names. Punctuation and
+    // non-ASCII bytes are part of a name, not implicit attribute separators.
+    const QStringList rawNames = {"script", "style", "textarea", "title", "xmp",
+                                  "noscript", "noframes", "noembed", "plaintext", "iframe"};
+    const QStringList suffixes = {"", "-", "-custom", ":x", "_x", ".",
+                                  QString(QChar(0xa0)), QString(QChar(0))};
+    for (const auto &name : rawNames) {
+        for (const auto &suffix : suffixes) {
+            const QString body = "<" + name + suffix + ">" + TAG;
+            const auto label = ("raw-text tag boundary: " + name + suffix).toUtf8();
+            chk(label.constData(), inExecutingHtmlContext(body, body.indexOf(TAG)) == !suffix.isEmpty());
+        }
+        const QString body = "<" + name + ">inert</" + name + ">" + TAG;
+        chk("raw-text closing tag restores element content except plaintext",
+            inExecutingHtmlContext(body, body.indexOf(TAG)) == (name != "plaintext"));
+    }
+    for (const auto &prefix : {"<!-->", "<!--->", "<!-- normal -->", "<!-- normal --!>", "<!bogus>"}) {
+        const QString body = QString::fromLatin1(prefix) + TAG;
+        chk("closed comment restores element content", inExecutingHtmlContext(body, body.indexOf(TAG)));
+    }
 
     // ===== queryWith: preserve others, replace target, percent-encode =====
     chk("queryWith replaces target, keeps others, encodes",

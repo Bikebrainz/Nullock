@@ -15,23 +15,62 @@
 
 namespace Nullock::Core::XssReflected {
 
-bool isHtmlContentType(const QString &contentTypeLower) {
-    // Only HTML (or no Content-Type, which browsers may sniff as HTML) can
-    // execute injected markup; a JSON/text/plain reflection is not XSS.
-    return contentTypeLower.isEmpty()
-        || contentTypeLower.contains("text/html")
-        || contentTypeLower.contains("application/xhtml");
+namespace {
+QString effectiveMediaType(const QString &value) {
+    // Chromium keeps the last parseable value across repeated/comma-combined
+    // fields. Commas inside quoted parameters do not start a new media type.
+    QString effective;
+    qsizetype start = 0;
+    bool quoted = false, escaped = false;
+    auto takeValue = [&](qsizetype end) {
+        qsizetype first = start;
+        while (first < end && (value[first] == ' ' || value[first] == '\t')) ++first;
+        qsizetype last = first;
+        while (last < end && value[last] != ' ' && value[last] != '\t'
+               && value[last] != ';' && value[last] != '(') ++last;
+        QString type = value.mid(first, last - first);
+        // Values without a media type do not erase an earlier usable one.
+        if (!type.contains('/')) return;
+        while (end > first && (value[end - 1] == ' ' || value[end - 1] == '\t')) --end;
+        // Chromium ignores a bare wildcard but retains one with parameters as
+        // an unknown type, which can then be sniffed when nosniff is absent.
+        if (type == "*/*" && last == end) return;
+        for (QChar &c : type)
+            if (c >= 'A' && c <= 'Z') c = QChar(c.unicode() + ('a' - 'A'));
+        effective = type;
+    };
+    for (qsizetype i = 0; i < value.size(); ++i) {
+        const QChar c = value[i];
+        if (escaped) { escaped = false; continue; }
+        if (quoted && c == '\\') { escaped = true; continue; }
+        if (c == '"') { quoted = !quoted; continue; }
+        if (c == ',' && !quoted) { takeValue(i); start = i + 1; }
+    }
+    takeValue(value.size());
+    return effective;
+}
+
+bool maySniffHtml(const QString &type) {
+    return type.isEmpty() || type == "unknown/unknown" || type == "application/unknown" || type == "*/*";
+}
+
+bool isHtmlMediaType(const QString &type) {
+    return type == "text/html" || type == "application/xhtml+xml";
+}
+} // namespace
+
+bool isHtmlContentType(const QString &contentType) {
+    const QString type = effectiveMediaType(contentType);
+    return maySniffHtml(type) || isHtmlMediaType(type);
 }
 
 bool canExecuteHtml(const QList<QPair<QString, QString>> &headers) {
-    QString contentType;
+    QStringList values;
     for (const auto &h : headers)
-        if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) {
-            contentType = h.second.toLower();
-            break;
-        }
-    if (contentType.isEmpty() && ResponseHeaderValues::nosniffForDocuments(headers)) return false;
-    return isHtmlContentType(contentType);
+        if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) values.append(h.second);
+    const QString type = effectiveMediaType(values.join(", "));
+    if (maySniffHtml(type)) return !ResponseHeaderValues::nosniffForDocuments(headers);
+    return isHtmlMediaType(type);
 }
 
 // Would "<marker>" at offset `at` be parsed as a start tag -- i.e. it's in
@@ -40,7 +79,7 @@ bool canExecuteHtml(const QList<QPair<QString, QString>> &headers) {
 // brackets inertly. A reduced HTML5 tokenizer over body[0..at):
 //   - tracks attribute QUOTING so only an UNQUOTED '>' ends a tag (a '>' inside
 //     a quoted attribute value must NOT re-enter element content);
-//   - treats script/style/textarea/title/xmp/noscript/noframes/noembed as
+//   - treats script/style/textarea/title/xmp/noscript/noframes/noembed/iframe as
 //     raw-text (a marker inside them is inert), and plaintext as irreversible
 //     raw-text that never closes;
 //   - closes a raw-text element on "</name" followed by a delimiter (not an
@@ -48,7 +87,7 @@ bool canExecuteHtml(const QList<QPair<QString, QString>> &headers) {
 bool inExecutingHtmlContext(const QString &body, int at) {
     static const QStringList rawText = {
         "script", "style", "textarea", "title", "xmp", "noscript",
-        "noframes", "noembed", "plaintext" };
+        "noframes", "noembed", "iframe", "plaintext" };
     auto isDelim = [](QChar c) {
         return c == '>' || c == '/' || c == ' ' || c == '\t'
             || c == '\n' || c == '\f' || c == '\r';
@@ -101,7 +140,12 @@ bool inExecutingHtmlContext(const QString &body, int at) {
         }
         // element content
         if (ch == '<') {
-            if (body.mid(i, 4) == QLatin1String("<!--")) { inComment = true; i += 3; continue; }
+            if (body.mid(i, 4) == QLatin1String("<!--")) {
+                // HTML's comment-start states also accept these abrupt closes.
+                if (body.mid(i, 5) == QLatin1String("<!-->")) { i += 4; continue; }
+                if (body.mid(i, 6) == QLatin1String("<!--->")) { i += 5; continue; }
+                inComment = true; i += 3; continue;
+            }
             // Markup declaration ("<!...", e.g. <!DOCTYPE>, <![CDATA[...>, a bogus
             // "<!x=\">") or a PI-like "<?...": HTML tokenizes ALL of these as a
             // BOGUS COMMENT -- consume to the very next '>' with NO attribute
@@ -127,7 +171,14 @@ bool inExecutingHtmlContext(const QString &body, int at) {
             // "1 < 2 <marker>" or "i <3 you <marker>".
             if (j >= body.size() || !isAsciiAlpha(body[j])) continue;
             QString nameStr;
-            while (j < body.size() && body[j].isLetterOrNumber()) { nameStr += body[j].toLower(); ++j; }
+            // Tag names end at HTML delimiters, not at punctuation or Unicode.
+            // <script-custom> and <script:custom> are ordinary elements, not
+            // a <script> opening followed by attributes.
+            while (j < body.size() && !isDelim(body[j])) {
+                QChar c = body[j++];
+                if (c >= 'A' && c <= 'Z') c = QChar(c.unicode() + ('a' - 'A'));
+                nameStr += c;
+            }
             if (!closing && rawText.contains(nameStr)) openRaw = nameStr;
             inTag = true;
             quote = QChar(0);

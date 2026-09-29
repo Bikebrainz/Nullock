@@ -10,7 +10,26 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Reflected XSS HTML contexts
+- Treat iframe fallback text as inert and recognize raw-text elements by exact
+  HTML tag names. Custom names such as `script-custom` no longer hide later
+  reflections. Handle abruptly closed comments (`<!-->` and `<!--->`).
+- Add native, API and pinned-browser regressions. Mark reflected-XSS parity as
+  partial because inert template and foreign-content parsing gaps remain.
+
+### Reflected-XSS media types
+- Parse the effective Content-Type across repeated fields and comma-separated
+  values instead of searching for an HTML substring. Plain-text parameters and
+  lookalike types no longer produce HTML findings; the last usable media type
+  determines the response format.
+- Respect quoted parameter commas and the browser's unknown-type sniffing rules,
+  including the `nosniff` gate. Add native, public-API and pinned-browser coverage.
+
 ### TLS certificate compatibility
+- Validate cached leaf signatures against the current CA, require the requested
+  DNS/IP subject alternative name, and verify the private key matches before reuse. Replace damaged keys, invalid
+  signatures and leaves signed by a previous CA after restart, while retaining
+  valid cached certificates.
 - Include subject and authority key identifiers in generated proxy certificates
   so strict TLS clients accept leaves minted by LibreSSL as well as OpenSSL.
 - Replace cached leaves that lack the authority key identifier. Runtime tests

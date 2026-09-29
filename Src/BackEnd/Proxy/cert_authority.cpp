@@ -7,12 +7,14 @@
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
+#include <QHostAddress>
 #include <QMutexLocker>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QSslCertificate>
 #include <QSslCertificateExtension>
+#include <QSslKey>
 #include <QStandardPaths>
 #include <QtGlobal>      // qWarning
 
@@ -28,6 +30,19 @@ namespace {
 
 constexpr int kStartTimeoutMs = 5'000;
 constexpr int kRunTimeoutMs   = 30'000;
+
+bool hasRequestedSubjectAlternativeName(const QSslCertificate &certificate, const QString &host) {
+    const auto names = certificate.subjectAlternativeNames();
+    QHostAddress address;
+    if (address.setAddress(host)) {
+        for (const auto &name : names.values(QSsl::IpAddressEntry))
+            if (QHostAddress(name) == address) return true;
+        return false;
+    }
+    for (const auto &name : names.values(QSsl::DnsEntry))
+        if (name.compare(host, Qt::CaseInsensitive) == 0) return true;
+    return false;
+}
 
 // Tighten a private key file's ACL so only the current OS user can read it.
 // Used for the CA key AND every leaf key (see leafCertFor): the CA cert is
@@ -133,7 +148,7 @@ QString CertAuthority::findOpensslExe() {
     return {};
 }
 
-bool CertAuthority::runOpenssl(const QStringList &args, QByteArray *stderrOut) {
+bool CertAuthority::runOpenssl(const QStringList &args, QByteArray *stderrOut, QByteArray *stdoutOut) {
     if (m_opensslExe.isEmpty()) return false;
     // Use a minimal, owned configuration instead of a developer-machine path
     // compiled into OpenSSL. x509_extensions applies only to the root's req -x509.
@@ -161,7 +176,24 @@ bool CertAuthority::runOpenssl(const QStringList &args, QByteArray *stderrOut) {
         return false;
     }
     if (stderrOut) *stderrOut = p.readAllStandardError();
+    if (stdoutOut) *stdoutOut = p.readAllStandardOutput();
     return p.exitCode() == 0;
+}
+
+bool CertAuthority::cachedLeafMatchesCaAndKey(const QString &certPath, const QString &keyPath,
+                                            const QByteArray &certPem) {
+    // Restrict trust to the current local CA. A leaf from an earlier CA can
+    // still have the right name, dates and AKI while failing every client.
+    if (!runOpenssl({ "verify", "-trusted", m_caCertPath, "-purpose", "sslserver", certPath }))
+        return false;
+    QByteArray publicPem;
+    // An encrypted or damaged key must not prompt interactively on this path.
+    if (!runOpenssl({ "pkey", "-in", keyPath, "-passin", "pass:", "-pubout" }, nullptr, &publicPem))
+        return false;
+    const auto certificateKey = QSslCertificate(certPem, QSsl::Pem).publicKey();
+    const QSslKey privateKeyPublicPart(publicPem, certificateKey.algorithm(), QSsl::Pem, QSsl::PublicKey);
+    return !certificateKey.isNull() && !privateKeyPublicPart.isNull()
+        && certificateKey.toDer() == privateKeyPublicPart.toDer();
 }
 
 bool CertAuthority::ensureCa() {
@@ -219,8 +251,8 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
     const QString persistCert = leavesDir + "/" + safe + ".pem";
     const QString persistKey  = leavesDir + "/" + safe + ".key";
 
-    // If we minted this host before and the files are still on disk, reuse
-    // them. Avoids ~100 ms of openssl forks on every restart.
+    // Validate persisted files once per host after restart, then reuse them
+    // without generating another RSA key and certificate.
     if (QFileInfo::exists(persistCert) && QFileInfo::exists(persistKey)) {
         LeafCert cached;
         QFile certFile(persistCert);
@@ -237,7 +269,9 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
         if (cached.valid() && !cachedCertificate.isNull()
             && hasAuthorityKeyIdentifier
             && cachedCertificate.subjectInfo(QSslCertificate::CommonName).contains(host)
-            && cachedCertificate.effectiveDate() <= now && cachedCertificate.expiryDate() > now) {
+            && hasRequestedSubjectAlternativeName(cachedCertificate, host)
+            && cachedCertificate.effectiveDate() <= now && cachedCertificate.expiryDate() > now
+            && cachedLeafMatchesCaAndKey(persistCert, persistKey, cached.certPem)) {
             // Re-assert owner-only ACL on reuse, the same way ensureCa does for
             // ca.key on startup. Leaves minted before the key-lockdown fix are
             // reused verbatim on this path and would otherwise stay at the
