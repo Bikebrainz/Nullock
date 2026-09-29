@@ -50,7 +50,7 @@
           <span class="badge"><span class="dot"></span>development</span>
         </div>
         <div class="rel-body">
-          <p class="rel-note">Security checks now distinguish effective response headers from malformed lookalikes. These changes are in the development build; v3.8.0 remains the latest release listed below.</p>
+          <p class="rel-note">Security checks now distinguish effective response headers from malformed lookalikes. These changes are in the development build; v3.7.0 remains the latest public release, and the v3.8.0 notes below are a draft.</p>
           <ul>
             <li><span class="tag fix">fix</span> <strong>Build follow-up and roadmap corrections.</strong> The <a href="https://github.com/Bikebrainz/Nullock/blob/Nullock/docs/reviews/2026-09-29-build-follow-up.md">September 29 checklist</a> records remaining byte-fidelity, HTML-context, cancellation, fixture-isolation and certificate-lifecycle work. Scope enforcement evidence is refreshed, and the native window's blocking Send path is called out separately.</li>
             <li><span class="tag fix">fix</span> <strong>Request files keep their binary bodies.</strong> Repeater CLI file and stdin loading preserves NUL bytes, non-UTF-8 data and trailing newlines. Invalid input leaves the draft unchanged; an empty file explicitly clears it. Tab summaries distinguish fresh tabs from completed responses, and duplicated tabs clear their old response metadata. Empty drafts and blank targets are rejected instead of reporting an old response as a successful send.</li>
@@ -71,8 +71,8 @@
       <article class="rel">
         <div class="rel-meta">
           <span class="rel-ver">v3.8.0</span>
-          <span class="caption">Aug 20, 2026</span>
-          <span class="badge"><span class="dot"></span>released</span>
+          <span class="caption">Draft notes &middot; Aug 20, 2026</span>
+          <span class="badge"><span class="dot"></span>unpublished draft</span>
         </div>
         <div class="rel-body">
           <p class="rel-note">The pre-launch blocker push &mdash; five of the first-hour blockers fixed: scan findings and Repeater tabs now survive app close and project reopen, Repeater auto-updates Content-Length, the proxy can bind off-loopback for device testing, and interception is now rule-driven &mdash; alongside a detector-hardening pass over the passive scanner (mutation-proven regression coverage around every finding kind), the false-negative bugs those tests surfaced, and new Burp-parity features on the roadmap.</p>

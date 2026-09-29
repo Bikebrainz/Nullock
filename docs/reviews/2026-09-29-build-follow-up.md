@@ -12,11 +12,13 @@ session. An unchecked item is not implemented.
 | Effective security headers and strict TLS certificate compatibility | [#21](https://github.com/Bikebrainz/Nullock/pull/21) | Merged |
 | Reflected-XSS media types and HTML boundaries; certificate-cache validation | [#22](https://github.com/Bikebrainz/Nullock/pull/22) | CI pending |
 | Stable history IDs, asynchronous CLI send polling and Stop | [#25](https://github.com/Bikebrainz/Nullock/pull/25) | CI pending |
-| Binary file/stdin requests and accurate tab response indicators | [#26](https://github.com/Bikebrainz/Nullock/pull/26) | CI pending |
+| Binary file/stdin requests, tab indicators and empty-send rejection | [#26](https://github.com/Bikebrainz/Nullock/pull/26) | CI pending |
 
 Every implementation PR also updates the public changelog and roadmap. These
 are development changes; they do not create a release or change the latest
-published version. Certificate details from #23 and HTML-context details from
+published version. GitHub release metadata checked on September 29 identifies
+v3.7.0 as the latest public release and v3.8.0 as an unpublished draft.
+Certificate details from #23 and HTML-context details from
 #24 were incorporated into #22.
 
 ## Next work, in priority order
@@ -139,7 +141,9 @@ blocking Send behavior is a separate issue described above.
   additional 1,238 generated media-type comparisons found no mismatches.
 - CLI fixtures and real-app checks cover stable IDs, binary history bodies,
   multiple busy polls, refusal/timeouts, Stop, binary files/stdin, UTF-8, invalid
-  base64 and fresh/completed/duplicated tab indicators.
+  base64, empty-send rejection and fresh/completed/duplicated tab indicators.
+  The final CLI build also passed all 102 native suites and 20 control
+  responsiveness checks.
 - Website checks cover links, script integrity, generated-page freshness and
   desktop/mobile roadmap and changelog layout.
 

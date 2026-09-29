@@ -12,6 +12,8 @@ developer-facing record.
 
 ### Build follow-up
 - Add the September 29 to-do list with reproduced gaps and acceptance checks.
+- Correct website release labels: v3.7.0 is the latest public release; v3.8.0
+  remains an unpublished draft.
 - Correct stale scope-enforcement evidence and distinguish native QML Send
   behavior from asynchronous browser/API/CLI sends.
 - Label roadmap grade changes as changes, including downward corrections.
