@@ -11,6 +11,10 @@ developer-facing record.
 ## [Unreleased]
 
 ### TLS certificate compatibility
+- Validate cached leaf signatures against the current CA and verify the private
+  key matches the certificate before reuse. Replace damaged keys, invalid
+  signatures and leaves signed by a previous CA after restart, while retaining
+  valid cached certificates.
 - Include subject and authority key identifiers in generated proxy certificates
   so strict TLS clients accept leaves minted by LibreSSL as well as OpenSSL.
 - Replace cached leaves that lack the authority key identifier. Runtime tests

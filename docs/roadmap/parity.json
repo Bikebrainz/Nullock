@@ -4006,13 +4006,13 @@
       "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Disk-cache reuse checks certificate parsing, subject, validity dates and authority key identifier. Cache eviction, a clear-leaves control, and complete CA/key rollover validation remain unavailable.",
-      "why": "CertAuthority::leafCertFor regenerates expired, wrong-subject and legacy leaves lacking an authority key identifier. Valid leaves persist across restarts and their private-key permissions are reapplied on reuse.",
-      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp leafCertFor; scripts/runtime_regression.py strict TLS transaction, wrong-subject cache fixture and legacy-certificate replacement after application restart.",
+      "gap": "Persisted leaves are checked against the current CA and private key after restart. Cache eviction, a clear-leaves control, live CA replacement, and automatic CA/key repair remain unavailable.",
+      "why": "Disk-cache reuse verifies parsing, subject, dates, authority key identifier, server-certificate trust against the current CA, and the private key public component. Stale, damaged or mismatched files are regenerated; valid files are reused and private-key permissions are reapplied.",
+      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp cachedLeafMatchesCaAndKey and leafCertFor; scripts/runtime_regression.py strict HTTPS after restart for valid reuse, legacy leaves, mismatched/damaged keys, invalid signatures and replaced CA.",
       "reconciled": {
         "date": "2026-09-29",
-        "commit": "784284db",
-        "note": "Regenerate legacy cached leaves missing authority key identifiers; corrected the stale claim that expired leaves are never replaced. Strict TLS regression covers persisted-cache replacement after restart."
+        "commit": "a6d8c913",
+        "note": "Validate persisted certificate signatures using only the current CA as a trust anchor and compare the private key public component. Real HTTPS regressions reproduce the old mismatch and cover replacement plus valid reuse."
       }
     },
     {
