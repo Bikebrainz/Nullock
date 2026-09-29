@@ -270,6 +270,23 @@ def main():
             damaged[-1] ^= 1
             cached_leaf.write_text(ssl.DER_cert_to_PEM_cert(bytes(damaged)))
             cached_https('cached certificate signature is verified', cached_leaf.read_bytes())
+            # A matching common name is insufficient: clients verify SANs.
+            # Keep the current key and CA so only the hostname binding differs.
+            for label, san in (('wrong', 'subjectAltName=IP:127.0.0.2\n'), ('missing', '')):
+                wrong_san_ext = scratch/'wrong-san.ext'
+                wrong_san_ext.write_text(san + 'basicConstraints=critical,CA:FALSE\n'
+                    'keyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n'
+                    'subjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid:always\n')
+                for command in (
+                    [openssl, 'req', '-new', '-key', str(leaves/'127.0.0.1.key'), '-subj', '/CN=127.0.0.1',
+                     '-config', str(legacy_req), '-out', str(scratch/'wrong-san.csr')],
+                    [openssl, 'x509', '-req', '-in', str(scratch/'wrong-san.csr'),
+                     '-CA', str(scratch/'app-data/ca/ca.pem'), '-CAkey', str(scratch/'app-data/ca/ca.key'),
+                     '-CAcreateserial', '-days', '1', '-extfile', str(wrong_san_ext), '-out', str(cached_leaf)],
+                ):
+                    subprocess.run(command, env=fixture_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                        check=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+                cached_https(f'cached certificate with {label} subject alternative name is replaced', cached_leaf.read_bytes())
             # Model manual CA replacement between sessions while old leaves
             # remain on disk. Only the new CA is trusted for this connection.
             ca_dir = scratch/'app-data/ca'

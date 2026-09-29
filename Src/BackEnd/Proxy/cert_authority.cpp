@@ -7,6 +7,7 @@
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
+#include <QHostAddress>
 #include <QMutexLocker>
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -29,6 +30,19 @@ namespace {
 
 constexpr int kStartTimeoutMs = 5'000;
 constexpr int kRunTimeoutMs   = 30'000;
+
+bool hasRequestedSubjectAlternativeName(const QSslCertificate &certificate, const QString &host) {
+    const auto names = certificate.subjectAlternativeNames();
+    QHostAddress address;
+    if (address.setAddress(host)) {
+        for (const auto &name : names.values(QSsl::IpAddressEntry))
+            if (QHostAddress(name) == address) return true;
+        return false;
+    }
+    for (const auto &name : names.values(QSsl::DnsEntry))
+        if (name.compare(host, Qt::CaseInsensitive) == 0) return true;
+    return false;
+}
 
 // Tighten a private key file's ACL so only the current OS user can read it.
 // Used for the CA key AND every leaf key (see leafCertFor): the CA cert is
@@ -255,6 +269,7 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
         if (cached.valid() && !cachedCertificate.isNull()
             && hasAuthorityKeyIdentifier
             && cachedCertificate.subjectInfo(QSslCertificate::CommonName).contains(host)
+            && hasRequestedSubjectAlternativeName(cachedCertificate, host)
             && cachedCertificate.effectiveDate() <= now && cachedCertificate.expiryDate() > now
             && cachedLeafMatchesCaAndKey(persistCert, persistKey, cached.certPem)) {
             // Re-assert owner-only ACL on reuse, the same way ensureCa does for
