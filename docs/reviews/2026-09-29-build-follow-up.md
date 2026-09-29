@@ -86,16 +86,23 @@ newer edits survive completion, and shutdown joins the worker cleanly.
 - [ ] Allocate separate HTTP and DNS sink ports for each smoke run, alongside
   the control/proxy ports, and verify startup on the requested listeners.
 - [ ] Report callback failures from the mock instead of discarding exceptions.
-- [ ] Check concurrent isolated runs and deliberate port conflicts.
+- [ ] Check concurrent isolated runs and deliberate IPv4/IPv6 port conflicts.
+- [ ] Verify that a callback to the advertised address reaches this app; a
+  running flag alone is insufficient on the reproduced Windows bind path.
 
 **Evidence:** one integrated run passed 193 checks and missed three HTTP OAST
 callbacks (SSRF, RCE and XXE); an isolated retry passed all 196. The cause of
 that first failure is not established. `scripts/probe_smoke.sh` uses the default
-OAST ports and suppresses exceptions from its HTTP callback mock.
+OAST ports and suppresses exceptions from its HTTP callback mock. In a separate
+controlled Windows experiment, occupying the requested port on IPv4 loopback
+left the app reporting `oast.running=true`, while a request to its advertised
+IPv4 address reached the pre-existing owned fixture. Occupying that port on a
+dual-stack listener instead left `running=false, port=0` while the control API
+remained available. Neither experiment proves the earlier transient cause.
 
 **Done when:** concurrent runs do not share sinks or state, listener failures
-produce a clear startup error, and callback diagnostics identify the failed
-operation. Retain token-specific positive assertions and safe-target negative
+produce a clear startup error, and a minted callback confirms ownership of the
+advertised address. Callback diagnostics must identify the failed operation. Retain token-specific positive assertions and safe-target negative
 controls; do not replace them with longer blind waits or automatic pass-on-retry.
 
 ### 5. Complete CA and certificate-cache lifecycle controls
