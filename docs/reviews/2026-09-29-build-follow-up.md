@@ -10,8 +10,8 @@ session. An unchecked item is not implemented.
 | Change | Pull request | Status |
 | --- | --- | --- |
 | Effective security headers and strict TLS certificate compatibility | [#21](https://github.com/Bikebrainz/Nullock/pull/21) | Merged |
-| Reflected-XSS media types and HTML boundaries; certificate-cache validation | [#22](https://github.com/Bikebrainz/Nullock/pull/22) | CI pending |
-| Stable history IDs, asynchronous CLI send polling and Stop | [#25](https://github.com/Bikebrainz/Nullock/pull/25) | CI pending |
+| Reflected-XSS media types and HTML boundaries; certificate-cache validation | [#22](https://github.com/Bikebrainz/Nullock/pull/22) | Merged |
+| Stable history IDs, asynchronous CLI send polling and Stop | [#25](https://github.com/Bikebrainz/Nullock/pull/25) | Merged |
 | Binary file/stdin requests, tab indicators and empty-send rejection | [#26](https://github.com/Bikebrainz/Nullock/pull/26) | CI pending |
 
 Every implementation PR also updates the public changelog and roadmap. These
