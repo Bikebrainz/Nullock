@@ -12,9 +12,10 @@ session. An unchecked item is not implemented.
 | Effective security headers and strict TLS certificate compatibility | [#21](https://github.com/Bikebrainz/Nullock/pull/21) | Merged |
 | Reflected-XSS media types and HTML boundaries; certificate-cache validation | [#22](https://github.com/Bikebrainz/Nullock/pull/22) | Merged |
 | Stable history IDs, asynchronous CLI send polling and Stop | [#25](https://github.com/Bikebrainz/Nullock/pull/25) | Merged |
-| Binary file/stdin requests, tab indicators and empty-send rejection | [#26](https://github.com/Bikebrainz/Nullock/pull/26) | CI pending |
+| Binary file/stdin requests, tab indicators and empty-send rejection | [#26](https://github.com/Bikebrainz/Nullock/pull/26) | Merged |
 
-Every implementation PR also updates the public changelog and roadmap. These
+Each implementation PR passed all eight CI jobs on its reviewed head before
+merge. Every implementation PR also updates the public changelog and roadmap. These
 are development changes; they do not create a release or change the latest
 published version. GitHub release metadata checked on September 29 identifies
 v3.7.0 as the latest public release and v3.8.0 as an unpublished draft.
