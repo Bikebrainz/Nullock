@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Repeater CLI contract checks against an owned loopback API fixture."""
+import base64
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
@@ -45,12 +47,32 @@ def main():
     worker = Thread(target=server.serve_forever, daemon=True)
     worker.start()
     env = {**os.environ, 'NULLOCK_API': f'http://127.0.0.1:{server.server_port}'}
-    def run(*args, success=True, timeout=30):
+    def run(*args, success=True, timeout=30, input_bytes=None):
         result = subprocess.run([bash, 'bin/nullock', 'repeater', *args], cwd=ROOT, env=env,
-                                capture_output=True, text=True, encoding='utf-8', timeout=timeout)
+                                capture_output=True, input=input_bytes, timeout=timeout)
+        result.stdout = result.stdout.decode('utf-8')
+        result.stderr = result.stderr.decode('utf-8')
         assert (result.returncode == 0) == success, (args, result.returncode, result.stdout, result.stderr)
         return result
     try:
+        raw = b'POST /bytes HTTP/1.1\r\nHost: fixture.test\r\n\r\n' + bytes(range(256)) + b'\n\n'
+        with tempfile.TemporaryDirectory(prefix='nullock-cli-bytes-') as temporary:
+            request = Path(temporary) / 'request bytes.bin'
+            for content in [raw, b'']:
+                request.write_bytes(content)
+                for source in [request.as_posix(), '-']:
+                    run('set', 'fixture.test', '80', 'false', source,
+                        input_bytes=content if source == '-' else None)
+                    path, payload, guard = received[-1]
+                    assert path == '/api/repeater/set' and guard == '1'
+                    assert base64.b64decode(payload['requestBase64'], validate=True) == content
+                    assert 'request' not in payload and 'requestEncoding' not in payload
+            count = len(received)
+            run('set', 'fixture.test', '80', 'false', (Path(temporary) / 'missing').as_posix(), success=False)
+            assert len(received) == count, 'unreadable input must not change the draft'
+        run('set', 'fixture.test', '80', 'false')
+        assert 'requestBase64' not in received[-1][1], 'omitting a file must preserve the current draft'
+        print('PASS: files and stdin preserve all bytes, empty input and trailing newlines', flush=True)
         run('load', '17')
         assert received[-1] == ('/api/repeater/tab/addFromHistoryId', {'id': 17}, '1'), received[-1]
         assert 'History row not found' in run('load', '999', success=False).stderr

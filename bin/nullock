@@ -309,15 +309,25 @@ cmd_repeater() {
         set)
             # nullock repeater set <host> <port> <tls:true|false> [request-file|-]
             [[ $# -ge 4 ]] || die "usage: nullock repeater set <host> <port> <tls> [request-file|-]"
-            local host=$2 port=$3 tls=$4 req=""
+            local host=$2 port=$3 tls=$4 encoded=""
             if [[ -n ${5-} ]]; then
-                if [[ $5 == "-" ]]; then req=$(cat); else req=$(cat "$5"); fi
+                # Keep raw bytes out of shell variables: command substitution
+                # discards NULs and trailing newlines. Only capture base64 text.
+                have base64 || die "base64 is required to load request files"
+                if [[ $5 == "-" ]]; then
+                    encoded=$(base64 | tr -d '\r\n') || die "could not read request from stdin"
+                else
+                    encoded=$(base64 < "$5" | tr -d '\r\n') || die "could not read request file: $5"
+                fi
             fi
             local body
             body="{\"host\":$(jsonq "$host"),\"port\":$port,\"tls\":$tls"
-            if [[ -n $req ]]; then body+=",\"request\":$(jsonq "$req")"; fi
+            if [[ -n ${5-} ]]; then body+=",\"requestBase64\":\"$encoded\""; fi
             body+="}"
-            post /api/repeater/set "$body" | pp
+            local response
+            response=$(post /api/repeater/set "$body")
+            "$JQ" -e '.ok == true' <<< "$response" >/dev/null || die "$response"
+            printf '%s\n' "$response" | pp
             ;;
         send)
             # Fire and wait briefly for the response to settle into snapshot.

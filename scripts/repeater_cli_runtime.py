@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import time
 import urllib.request
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
@@ -56,9 +57,11 @@ def main():
             with urllib.request.urlopen(request, timeout=10) as response:
                 return json.load(response)
 
-        def cli(*args, success=True):
+        def cli(*args, success=True, input_bytes=None):
             result = subprocess.run([bash, 'bin/nullock', 'repeater', *args], cwd=ROOT, env=env,
-                capture_output=True, text=True, encoding='utf-8', timeout=25)
+                capture_output=True, input=input_bytes, timeout=25)
+            result.stdout = result.stdout.decode('utf-8')
+            result.stderr = result.stderr.decode('utf-8')
             assert (result.returncode == 0) == success, (args, result.stdout, result.stderr)
             return result
 
@@ -107,6 +110,52 @@ def main():
             assert after['request'] == before['request'] and after['activeTab'] == before['activeTab']
             cli('stop')
             print('PASS: another ID selects its request; missing IDs fail without replacing the draft', flush=True)
+            binary = bytes(range(256)) * 300 + b'\x00\xff\n\n'
+            request = (f'POST /file HTTP/1.1\r\nHost: 127.0.0.1:{fixture.server_port}\r\n'
+                       f'Content-Length: {len(binary)}\r\n\r\n').encode() + binary
+            request_file = root / 'request bytes.bin'
+            request_file.write_bytes(request)
+            for source in [request_file.as_posix(), '-']:
+                cli('set', '127.0.0.1', str(fixture.server_port), 'false', source,
+                    input_bytes=request if source == '-' else None)
+                loaded = api('/api/snapshot')['repeater']
+                assert loaded['request'].encode('latin1') == request
+                assert loaded['requestEncoding'] == 'latin1'
+                cli('send')
+                assert received[-1] == ('/file', binary), 'file and stdin must send every original body byte'
+            print('PASS: file and stdin send 76,804 bytes including NUL, invalid UTF-8 and trailing newlines', flush=True)
+            before = api('/api/snapshot')['repeater']
+            for invalid in [None, 123, '!!!', 'YQ=', 'YQ===', '\u00e9', {'nested': 'bad'}]:
+                try:
+                    api('/api/repeater/set', {'host': 'changed.invalid', 'requestBase64': invalid})
+                    raise AssertionError(f'invalid base64 accepted: {invalid!r}')
+                except urllib.error.HTTPError as error:
+                    assert error.code == 400
+                after = api('/api/snapshot')['repeater']
+                assert after['request'] == before['request'] and after['host'] == before['host']
+            for extra in [{'request': 'ambiguous'}, {'requestEncoding': 'utf8'}]:
+                try:
+                    api('/api/repeater/set', {'requestBase64': 'YQ==', **extra})
+                    raise AssertionError('ambiguous encoding accepted')
+                except urllib.error.HTTPError as error:
+                    assert error.code == 400
+            cli('set', '127.0.0.1', str(fixture.server_port), 'false')
+            assert api('/api/snapshot')['repeater']['request'] == before['request']
+            request_file.write_bytes(b'')
+            cli('set', '127.0.0.1', str(fixture.server_port), 'false', request_file.as_posix())
+            assert api('/api/snapshot')['repeater']['request'] == ''
+            unicode_body = 'caf\u00e9 \u2603\n\n'
+            unicode_request = (f'POST /utf8 HTTP/1.1\r\nHost: 127.0.0.1:{fixture.server_port}\r\n'
+                               f'Content-Length: {len(unicode_body.encode())}\r\n\r\n' + unicode_body)
+            cli('set', '127.0.0.1', str(fixture.server_port), 'false', '-', input_bytes=unicode_request.encode())
+            loaded = api('/api/snapshot')['repeater']
+            assert loaded['request'] == unicode_request and loaded['requestEncoding'] == 'utf8'
+            cli('send')
+            assert received[-1] == ('/utf8', unicode_body.encode())
+            assert api('/api/repeater/set', {'request': unicode_request, 'requestEncoding': 'utf8'})['ok']
+            assert api('/api/snapshot')['repeater']['request'] == unicode_request
+            print('PASS: invalid or ambiguous base64 preserves the draft; an empty file explicitly clears it', flush=True)
+            print('PASS: valid UTF-8 stays readable and legacy text input remains supported', flush=True)
             api('/api/app/quit', {})
             assert process.wait(timeout=15) == 0
         except Exception:

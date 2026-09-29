@@ -3697,12 +3697,28 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
 
     if (path == "/api/repeater/set") {
+        QByteArray requestBytes;
+        const bool hasRequestBytes = bodyJson.contains("requestBase64");
+        if (hasRequestBytes) {
+            // Validate before changing the destination or draft. Binary input
+            // has one unambiguous representation and uses the same reversible
+            // byte-to-editor mapping as captured requests.
+            if (!bodyJson.value("requestBase64").isString()
+                || bodyJson.contains("request") || bodyJson.contains("requestEncoding"))
+                return httpJson(400, {{"ok", false}, {"error", "requestBase64 must be a string without request or requestEncoding"}});
+            const auto decoded = QByteArray::fromBase64Encoding(
+                bodyJson.value("requestBase64").toString().toUtf8(), QByteArray::AbortOnBase64DecodingErrors);
+            if (!decoded)
+                return httpJson(400, {{"ok", false}, {"error", "Invalid requestBase64"}});
+            requestBytes = decoded.decoded;
+        }
         if (m_wiring.repeater) {
             if (bodyJson.contains("host"))    m_wiring.repeater->setHost(bodyJson.value("host").toString());
             if (bodyJson.contains("port"))    m_wiring.repeater->setPort(bodyJson.value("port").toInt());
             if (bodyJson.contains("tls"))     m_wiring.repeater->setUseTls(bodyJson.value("tls").toBool());
             if (bodyJson.contains("request")) m_wiring.repeater->setRequestText(bodyJson.value("request").toString());
             if (bodyJson.contains("requestEncoding")) m_wiring.repeater->setRequestLatin1(bodyJson.value("requestEncoding").toString() == "latin1");
+            if (hasRequestBytes) m_wiring.repeater->setRequestBytes(requestBytes);
             // Burp's "Update Content-Length" toggle. On by default; set false to
             // send bytes verbatim for a hand-crafted CL/TE smuggling desync.
             if (bodyJson.contains("autoContentLength"))
