@@ -11,6 +11,8 @@ developer-facing record.
 ## [Unreleased]
 
 ### Repeater CLI and roadmap
+- Reject empty drafts and blank target hosts before accepting an API send, so
+  the CLI cannot report a previous response as a successful new request.
 - Report response presence per tab instead of treating missing response text as
   a completed response. Clear elapsed-time and byte-count metadata on duplicated
   tabs along with their response.
