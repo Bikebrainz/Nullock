@@ -33,7 +33,10 @@ public:
     LeafCert leafCertFor(const QString &host);
 
 private:
-    bool runOpenssl(const QStringList &args, QByteArray *stderrOut = nullptr);
+    bool runOpenssl(const QStringList &args, QByteArray *stderrOut = nullptr,
+                    QByteArray *stdoutOut = nullptr);
+    bool cachedLeafMatchesCaAndKey(const QString &certPath, const QString &keyPath,
+                                   const QByteArray &certPem);
     static QString findOpensslExe();
     static QString defaultCaDir();
 

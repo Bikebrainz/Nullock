@@ -229,27 +229,60 @@ def main():
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
             shutil.copyfile(scratch/'tls.key', leaves/'127.0.0.1.key')
             legacy_bytes = cached_leaf.read_bytes()
-            # Restart to exercise the persisted cache, not the already minted
-            # in-memory certificate from the first transaction.
-            api('/api/app/quit', {})
-            check('application exits before checking persisted certificates', process.wait(timeout=15) == 0)
-            process = subprocess.Popen(app_command, env=env, stdout=log, stderr=log,
+            def restart_proxy():
+                nonlocal process
+                # Restart to exercise persisted files, not the in-memory cache.
+                api('/api/app/quit', {})
+                check('application exits before checking persisted certificates', process.wait(timeout=15) == 0)
+                process = subprocess.Popen(app_command, env=env, stdout=log, stderr=log,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+                for _ in range(120):
+                    if process.poll() is not None: raise RuntimeError('app failed to restart')
+                    try: api('/api/snapshot', timeout=.25); break
+                    except OSError: time.sleep(.1)
+                else: raise RuntimeError('app did not restart')
+                api('/api/proxy/accept-invalid-hosts/add', {'host':f'127.0.0.1:{tls_mock.server_port}'})
+
+            def cached_https(label, previous, replaced=True):
+                restart_proxy()
+                tunnel = http.client.HTTPSConnection('127.0.0.1', proxy, context=trust, timeout=15)
+                try:
+                    tunnel.set_tunnel('127.0.0.1', tls_mock.server_port)
+                    tunnel.request('GET', '/tls-cache')
+                    response = tunnel.getresponse()
+                    check(label, response.status == 200 and response.read() == b'OK'
+                          and (cached_leaf.read_bytes() != previous) == replaced)
+                finally:
+                    tunnel.close()
+
+            cached_https('legacy cached certificate is replaced and accepted by a strict TLS client', legacy_bytes)
+            cached_https('valid persisted certificate is reused', cached_leaf.read_bytes(), replaced=False)
+            # Right issuer, host and dates do not establish possession of the
+            # certificate key. A different valid private key must be replaced.
+            previous = cached_leaf.read_bytes()
+            shutil.copyfile(scratch/'tls.key', leaves/'127.0.0.1.key')
+            cached_https('mismatched cached private key is replaced', previous)
+            previous = cached_leaf.read_bytes()
+            (leaves/'127.0.0.1.key').write_text('not a private key')
+            cached_https('damaged cached private key is replaced', previous)
+            # Preserve the subject and extensions but invalidate the signature.
+            damaged = bytearray(ssl.PEM_cert_to_DER_cert(cached_leaf.read_text()))
+            damaged[-1] ^= 1
+            cached_leaf.write_text(ssl.DER_cert_to_PEM_cert(bytes(damaged)))
+            cached_https('cached certificate signature is verified', cached_leaf.read_bytes())
+            # Model manual CA replacement between sessions while old leaves
+            # remain on disk. Only the new CA is trusted for this connection.
+            ca_dir = scratch/'app-data/ca'
+            subprocess.run([openssl, 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+                '-keyout', str(scratch/'replacement-ca.key'), '-out', str(scratch/'replacement-ca.pem'),
+                '-config', str(ca_dir/'openssl.cnf'), '-subj', '/CN=Nullock Local Root CA/O=Nullock'],
+                env=fixture_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
-            for _ in range(120):
-                if process.poll() is not None: raise RuntimeError('app failed to restart')
-                try: api('/api/snapshot', timeout=.25); break
-                except OSError: time.sleep(.1)
-            else: raise RuntimeError('app did not restart')
-            api('/api/proxy/accept-invalid-hosts/add', {'host':f'127.0.0.1:{tls_mock.server_port}'})
-            tunnel = http.client.HTTPSConnection('127.0.0.1', proxy, context=trust, timeout=15)
-            try:
-                tunnel.set_tunnel('127.0.0.1', tls_mock.server_port)
-                tunnel.request('GET', '/tls-legacy-cache')
-                response = tunnel.getresponse()
-                check('legacy cached certificate is replaced and accepted by a strict TLS client',
-                      response.status == 200 and response.read() == b'OK' and cached_leaf.read_bytes() != legacy_bytes)
-            finally:
-                tunnel.close()
+            for extension in ('pem', 'key'):
+                shutil.copyfile(scratch/f'replacement-ca.{extension}', ca_dir/f'ca.{extension}')
+            trust = ssl.create_default_context(cafile=str(ca_dir/'ca.pem'))
+            trust.verify_flags |= ssl.VERIFY_X509_STRICT
+            cached_https('leaf signed by a replaced CA is regenerated', cached_leaf.read_bytes())
             send(f'GET /redirect HTTP/1.1\r\nHost: {host}\r\nCookie: original=fixture\r\n\r\n')
             dst=next(r for r in received if r[0]=='/cookie-destination')
             check('redirect does not disclose original or Secure/path cookies', not dst[1].get('Cookie'))
