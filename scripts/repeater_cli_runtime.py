@@ -88,6 +88,7 @@ def main():
                 try: api('/api/snapshot'); break
                 except OSError: time.sleep(.1)
             else: raise AssertionError('app did not start')
+            assert all(not tab['hasResponse'] for tab in json.loads(cli('tabs').stdout)['tabs'])
             first = b'\x00\xff\x80\n\r\n' + b'A' * 70000
             second = b'second captured request'
             assert api('/api/har/import', {'har': {'log': {'version': '1.2',
@@ -101,6 +102,18 @@ def main():
             result = json.loads(cli('send').stdout)
             assert '200' in result['status'] and result['response'].endswith('OK')
             assert received == [('/first', first)], 'history ID must select the exact full binary request'
+            tabs = json.loads(cli('tabs').stdout)
+            assert tabs['tabs'][tabs['active']]['hasResponse']
+            cli('tab', 'duplicate', str(tabs['active']))
+            tabs = json.loads(cli('tabs').stdout)
+            assert not tabs['tabs'][tabs['active']]['hasResponse']
+            duplicate = api('/api/snapshot')['repeater']
+            assert duplicate['responseBytes'] == -1 and duplicate['elapsedMs'] == -1
+            assert duplicate['request'].startswith('POST /first ')
+            cli('tab', 'add', 'Fresh tab')
+            tabs = json.loads(cli('tabs').stdout)
+            assert not tabs['tabs'][tabs['active']]['hasResponse']
+            print('PASS: fresh and duplicated tabs have no response; completed tabs retain their response flag', flush=True)
             print('PASS: CLI loads the stable history ID and sends all binary bytes after async polling', flush=True)
             cli('load', '2')
             before = api('/api/snapshot')['repeater']

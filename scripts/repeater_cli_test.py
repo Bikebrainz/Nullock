@@ -27,7 +27,9 @@ class Handler(BaseHTTPRequestHandler):
         state['polls'] += 1
         busy = state['hold'] or state['polls'] < 3
         self.reply({'repeater': {'busy': busy, 'statusLine': 'pending' if busy else 'HTTP/1.1 200 OK',
-                                  'response': 'old response' if busy else 'completed fixture'}})
+                                  'response': 'old response' if busy else 'completed fixture',
+                                  'tabs': [{'hasResponse': False, 'responseBytes': 120}, {'hasResponse': True},
+                                           {'responseBytes': -1}, {'responseBytes': 120}, {}]}})
     def do_POST(self):
         data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         received.append((self.path, data, self.headers.get('X-Nullock-UI')))
@@ -55,6 +57,8 @@ def main():
         assert (result.returncode == 0) == success, (args, result.returncode, result.stdout, result.stderr)
         return result
     try:
+        assert [tab['hasResponse'] for tab in json.loads(run('tabs').stdout)['tabs']] == [False, True, False, True, False]
+        print('PASS: tab response flags and legacy metadata distinguish fresh tabs', flush=True)
         raw = b'POST /bytes HTTP/1.1\r\nHost: fixture.test\r\n\r\n' + bytes(range(256)) + b'\n\n'
         with tempfile.TemporaryDirectory(prefix='nullock-cli-bytes-') as temporary:
             request = Path(temporary) / 'request bytes.bin'

@@ -1612,6 +1612,7 @@ QByteArray ControlServer::buildSnapshot() const {
             to["statusLine"] = t.statusLine;
             to["elapsedMs"]     = t.elapsedMs;
             to["responseBytes"] = t.responseBytes;
+            to["hasResponse"] = !t.responseText.isEmpty();
             to["notes"]      = t.notes;
             // Per-tab send history (compact: status + timestamp + metadata per prior
             // send) so the UI can render a navigable list; a full entry is loaded

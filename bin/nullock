@@ -382,7 +382,7 @@ cmd_repeater() {
         tabs)
             snapshot | "$JQ" '{
                 active: .repeater.activeTab,
-                tabs: [.repeater.tabs[] | {name, host, port, tls, hasResponse: (.responseText != "")}]
+                tabs: [.repeater.tabs[] | {name, host, port, tls, hasResponse: (if has("hasResponse") then .hasResponse else ((.responseBytes // -1) > 0) end)}]
             }'
             ;;
         tab)
