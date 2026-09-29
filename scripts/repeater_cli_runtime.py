@@ -157,6 +157,10 @@ def main():
             request_file.write_bytes(b'')
             cli('set', '127.0.0.1', str(fixture.server_port), 'false', request_file.as_posix())
             assert api('/api/snapshot')['repeater']['request'] == ''
+            before_count = len(received)
+            empty_send = cli('send', success=False)
+            assert 'requires a target host and request' in empty_send.stderr and not empty_send.stdout.strip()
+            assert len(received) == before_count, 'empty drafts must not send or report an old response'
             unicode_body = 'caf\u00e9 \u2603\n\n'
             unicode_request = (f'POST /utf8 HTTP/1.1\r\nHost: 127.0.0.1:{fixture.server_port}\r\n'
                                f'Content-Length: {len(unicode_body.encode())}\r\n\r\n' + unicode_body)
@@ -167,6 +171,9 @@ def main():
             assert received[-1] == ('/utf8', unicode_body.encode())
             assert api('/api/repeater/set', {'request': unicode_request, 'requestEncoding': 'utf8'})['ok']
             assert api('/api/snapshot')['repeater']['request'] == unicode_request
+            assert api('/api/repeater/set', {'host': '   '})['ok']
+            assert 'requires a target host and request' in cli('send', success=False).stderr
+            print('PASS: empty requests and blank target hosts fail without printing an old response', flush=True)
             print('PASS: invalid or ambiguous base64 preserves the draft; an empty file explicitly clears it', flush=True)
             print('PASS: valid UTF-8 stays readable and legacy text input remains supported', flush=True)
             api('/api/app/quit', {})
