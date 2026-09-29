@@ -50,7 +50,7 @@
           <span class="badge"><span class="dot"></span>development</span>
         </div>
         <div class="rel-body">
-          <p class="rel-note">Security checks now distinguish effective response headers from malformed lookalikes. These changes are in the development build; v3.7.0 remains the latest public release, and the v3.8.0 notes below are a draft.</p>
+          <p class="rel-note">The development build includes corrected security checks, certificate-cache validation and Repeater CLI fixes; v3.7.0 remains the latest public release, and the v3.8.0 notes below are a draft.</p>
           <ul>
             <li><span class="tag fix">fix</span> <strong>Build follow-up and roadmap corrections.</strong> The <a href="https://github.com/Bikebrainz/Nullock/blob/Nullock/docs/reviews/2026-09-29-build-follow-up.md">September 29 checklist</a> records remaining byte-fidelity, HTML-context, cancellation, fixture-isolation and certificate-lifecycle work. Scope enforcement evidence is refreshed, and the native window's blocking Send path is called out separately.</li>
             <li><span class="tag fix">fix</span> <strong>Request files keep their binary bodies.</strong> Repeater CLI file and stdin loading preserves NUL bytes, non-UTF-8 data and trailing newlines. Invalid input leaves the draft unchanged; an empty file explicitly clears it. Tab summaries distinguish fresh tabs from completed responses, and duplicated tabs clear their old response metadata. Empty drafts and blank targets are rejected instead of reporting an old response as a successful send.</li>
