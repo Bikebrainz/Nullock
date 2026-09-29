@@ -144,8 +144,8 @@ blocking Send behavior is a separate issue described above.
 - Native suites: 102 passed on the combined XSS/certificate implementation.
 - Public probe smoke: 196 passed on the isolated rerun; the earlier OAST misses
   remain recorded above.
-- Strict TLS and runtime regressions: 64 checks with the native-window option;
-  the later CLI build also passed 62 headless runtime checks.
+- Strict TLS and runtime regressions: all 64 checks, including native-window
+  startup, passed on the final CLI build.
 - Pinned Chromium: 72 media-type and 95 HTML-context comparisons passed. An
   additional 1,238 generated media-type comparisons found no mismatches.
 - CLI fixtures and real-app checks cover stable IDs, binary history bodies,
