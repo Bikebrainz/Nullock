@@ -10,6 +10,13 @@ developer-facing record.
 
 ## [Unreleased]
 
+### TLS certificate compatibility
+- Include subject and authority key identifiers in generated proxy certificates
+  so strict TLS clients accept leaves minted by LibreSSL as well as OpenSSL.
+- Replace cached leaves that lack the authority key identifier. Runtime tests
+  verify the replacement through a real HTTPS connection after restarting the app,
+  and distinguish proxy-certificate failures from rejected upstream certificates.
+
 ### Response header validation
 - Validate effective `nosniff` and Referrer-Policy values in active and passive
   header checks, including repeated fields, fallback keywords and malformed tokens.

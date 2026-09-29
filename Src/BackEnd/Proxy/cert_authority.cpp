@@ -12,6 +12,7 @@
 #include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QSslCertificate>
+#include <QSslCertificateExtension>
 #include <QStandardPaths>
 #include <QtGlobal>      // qWarning
 
@@ -227,8 +228,14 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
         QFile keyFile(persistKey);
         if (keyFile.open(QFile::ReadOnly)) cached.keyPem = keyFile.readAll();
         const QSslCertificate cachedCertificate(cached.certPem, QSsl::Pem);
+        // LibreSSL did not add AKI implicitly to older leaves. Strict clients
+        // reject those certificates, so replace them on the first disk load.
+        bool hasAuthorityKeyIdentifier = false;
+        for (const auto &extension : cachedCertificate.extensions())
+            if (extension.oid() == "2.5.29.35") hasAuthorityKeyIdentifier = true;
         const auto now = QDateTime::currentDateTimeUtc();
         if (cached.valid() && !cachedCertificate.isNull()
+            && hasAuthorityKeyIdentifier
             && cachedCertificate.subjectInfo(QSslCertificate::CommonName).contains(host)
             && cachedCertificate.effectiveDate() <= now && cachedCertificate.expiryDate() > now) {
             // Re-assert owner-only ACL on reuse, the same way ensureCa does for
@@ -271,11 +278,15 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
         // IP-literal targets need an iPAddress SAN, not DNS -- a client verifying
         // an https://<ip>/ host rejects a DNS:<ip> leaf (and a rejected forged leaf
         // then auto-blocklists the host here). sanEntryForHost picks IP: vs DNS:.
+        // Declare key identifiers explicitly: unlike newer OpenSSL versions,
+        // LibreSSL does not synthesize them when signing a leaf.
         const QString contents = QStringLiteral(
             "subjectAltName = %1\n"
             "basicConstraints = critical, CA:FALSE\n"
             "keyUsage = critical, digitalSignature, keyEncipherment\n"
-            "extendedKeyUsage = serverAuth\n").arg(CertLogic::sanEntryForHost(host));
+            "extendedKeyUsage = serverAuth\n"
+            "subjectKeyIdentifier = hash\n"
+            "authorityKeyIdentifier = keyid:always\n").arg(CertLogic::sanEntryForHost(host));
         extFile.write(contents.toUtf8());
     }
 
