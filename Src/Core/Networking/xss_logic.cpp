@@ -15,23 +15,62 @@
 
 namespace Nullock::Core::XssReflected {
 
-bool isHtmlContentType(const QString &contentTypeLower) {
-    // Only HTML (or no Content-Type, which browsers may sniff as HTML) can
-    // execute injected markup; a JSON/text/plain reflection is not XSS.
-    return contentTypeLower.isEmpty()
-        || contentTypeLower.contains("text/html")
-        || contentTypeLower.contains("application/xhtml");
+namespace {
+QString effectiveMediaType(const QString &value) {
+    // Chromium keeps the last parseable value across repeated/comma-combined
+    // fields. Commas inside quoted parameters do not start a new media type.
+    QString effective;
+    qsizetype start = 0;
+    bool quoted = false, escaped = false;
+    auto takeValue = [&](qsizetype end) {
+        qsizetype first = start;
+        while (first < end && (value[first] == ' ' || value[first] == '\t')) ++first;
+        qsizetype last = first;
+        while (last < end && value[last] != ' ' && value[last] != '\t'
+               && value[last] != ';' && value[last] != '(') ++last;
+        QString type = value.mid(first, last - first);
+        // Values without a media type do not erase an earlier usable one.
+        if (!type.contains('/')) return;
+        while (end > first && (value[end - 1] == ' ' || value[end - 1] == '\t')) --end;
+        // Chromium ignores a bare wildcard but retains one with parameters as
+        // an unknown type, which can then be sniffed when nosniff is absent.
+        if (type == "*/*" && last == end) return;
+        for (QChar &c : type)
+            if (c >= 'A' && c <= 'Z') c = QChar(c.unicode() + ('a' - 'A'));
+        effective = type;
+    };
+    for (qsizetype i = 0; i < value.size(); ++i) {
+        const QChar c = value[i];
+        if (escaped) { escaped = false; continue; }
+        if (quoted && c == '\\') { escaped = true; continue; }
+        if (c == '"') { quoted = !quoted; continue; }
+        if (c == ',' && !quoted) { takeValue(i); start = i + 1; }
+    }
+    takeValue(value.size());
+    return effective;
+}
+
+bool maySniffHtml(const QString &type) {
+    return type.isEmpty() || type == "unknown/unknown" || type == "application/unknown" || type == "*/*";
+}
+
+bool isHtmlMediaType(const QString &type) {
+    return type == "text/html" || type == "application/xhtml+xml";
+}
+} // namespace
+
+bool isHtmlContentType(const QString &contentType) {
+    const QString type = effectiveMediaType(contentType);
+    return maySniffHtml(type) || isHtmlMediaType(type);
 }
 
 bool canExecuteHtml(const QList<QPair<QString, QString>> &headers) {
-    QString contentType;
+    QStringList values;
     for (const auto &h : headers)
-        if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) {
-            contentType = h.second.toLower();
-            break;
-        }
-    if (contentType.isEmpty() && ResponseHeaderValues::nosniffForDocuments(headers)) return false;
-    return isHtmlContentType(contentType);
+        if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) values.append(h.second);
+    const QString type = effectiveMediaType(values.join(", "));
+    if (maySniffHtml(type)) return !ResponseHeaderValues::nosniffForDocuments(headers);
+    return isHtmlMediaType(type);
 }
 
 // Would "<marker>" at offset `at` be parsed as a start tag -- i.e. it's in

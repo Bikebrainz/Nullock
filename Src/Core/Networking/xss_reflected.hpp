@@ -54,12 +54,12 @@ Result test(const Request &req);
 QStringList defaultParams();
 
 // Exposed for tests (pure logic; live in xss_logic.cpp):
-//   isHtmlContentType  -- is a lower-cased Content-Type browser-executable HTML?
+//   isHtmlContentType  -- can the effective Content-Type render/sniff HTML?
 //   inExecutingHtmlContext -- is the marker at `at` in runnable element content?
 //   buildRequest -- render the GET, stripping CR/LF from method/host/path/query
 //                   and dropping any CR/LF-bearing carried header.
 //   queryWith -- set `param` to `value` (percent-encoded), preserving others.
-bool isHtmlContentType(const QString &contentTypeLower);
+bool isHtmlContentType(const QString &contentType);
 // Header-level gate for an HTML response or a document that can be sniffed as HTML.
 bool canExecuteHtml(const QList<QPair<QString, QString>> &headers);
 bool inExecutingHtmlContext(const QString &body, int at);

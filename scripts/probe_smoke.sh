@@ -801,6 +801,23 @@ def make(mode):
                 # reflects it raw (the <marker> stays an executable tag); the safe
                 # mock HTML-escapes it.
                 val = q.get('q', [''])[0]
+                if mode == 'xss-media':
+                    types = {
+                        '/parameter': ['text/plain; note=text/html'],
+                        '/suffix': ['text/htmlx'],
+                        '/xhtml-lookalike': ['application/xhtml'],
+                        '/last-plain': ['text/html', 'text/plain'],
+                        '/last-html': ['text/plain', 'text/html'],
+                        '/combined-plain': ['text/html, text/plain'],
+                        '/quoted-comma': ['text/plain; note="a,text/html"'],
+                        '/unknown': ['nosuch'],
+                        '/html': ['text/html; charset=utf-8'],
+                    }.get(urlparse(self.path).path, ['text/plain'])
+                    body = ('<html><body>Results for: %s</body></html>' % val).encode()
+                    self.send_response(200)
+                    for value in types: self.send_header('Content-Type', value)
+                    self.send_header('Content-Length', str(len(body))); self.end_headers()
+                    self.wfile.write(body); return
                 if mode == 'xss-attr':
                     # Reflect the marker RAW but into a later attribute, after an
                     # earlier quoted attribute value that contains a literal '>'.
@@ -1059,6 +1076,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie hh-host-loc hh-urlattr
        sqli-vuln sqli-safe sqli-blind sqli-waf
        xss-vuln xss-safe xss-attr xss-nosniff xss-nosniff-invalid xss-nosniff-combined xss-nosniff-repeated
+       xss-media
        crlf-vuln crlf-colonless crlf-safe
        crlf-post-vuln crlf-post-safe crlf-hdr-vuln crlf-hdr-safe
        method-allow method-trace method-trace-fp method-405 method-track
@@ -1178,6 +1196,12 @@ for variant in xss-nosniff-invalid; do
 done
 for variant in xss-nosniff-combined xss-nosniff-repeated; do
   chk "xss first nosniff token blocks untyped reflection ($variant)" "$(post /api/xss/test "{\"url\":\"$(url ${P[$variant]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+done
+for variant in parameter suffix xhtml-lookalike last-plain combined-plain quoted-comma; do
+  chk "xss non-HTML media type is inert ($variant)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-media]} "$variant?q=test")\"}")" "d.get('ok') and not d.get('vulnerable')"
+done
+for variant in last-html unknown html; do
+  chk "xss effective HTML media type remains executable ($variant)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-media]} "$variant?q=test")\"}")" "d.get('ok') and d.get('vulnerable')"
 done
 
 echo "== HTTP method audit =="

@@ -169,6 +169,47 @@ int main(int argc, char **argv) {
     chk("CT application/json -> NOT HTML", !isHtmlContentType("application/json"));
     chk("CT text/plain -> NOT HTML", !isHtmlContentType("text/plain"));
 
+    struct MediaCase { QStringList values; bool html; bool sniffed; };
+    const MediaCase mediaCases[] = {
+        {{}, true, true}, {{""}, true, true}, {{";"}, true, true},
+        {{"nosuch"}, true, true}, {{"text /html"}, true, true},
+        {{"unknown/unknown"}, true, true}, {{"application/unknown"}, true, true},
+        {{"*/*"}, true, true},
+        {{"text/plain", "*/*"}, false, false},
+        {{"text/plain", "*/*; charset=utf-8"}, true, true},
+        {{"*/*; charset=utf-8"}, true, true},
+        {{"text/html"}, true, false}, {{"TEXT/HTML"}, true, false},
+        {{"\ttext/html "}, true, false}, {{"text/html ; charset=utf-8"}, true, false},
+        {{"text/html(comment)"}, true, false}, {{"text/html extra"}, true, false},
+        {{"application/xhtml+xml"}, true, false},
+        {{"text/plain; note=text/html"}, false, false},
+        {{"application/json; note=\"text/html\""}, false, false},
+        {{"text/htmlx"}, false, false}, {{"application/xhtml"}, false, false},
+        {{"application/xhtml+xml-extra"}, false, false},
+        {{"application/octet-stream"}, false, false},
+        {{QString(QChar(0xa0)) + "text/html" + QChar(0xa0)}, false, false},
+        {{"text/plain", "text/html"}, true, false},
+        {{"text/html", "text/plain"}, false, false},
+        {{"text/html, text/plain"}, false, false},
+        {{"text/plain, text/html"}, true, false},
+        {{"text/html", ""}, true, false}, {{"", "text/html"}, true, false},
+        {{"text/html", "nosuch"}, true, false},
+        {{"text/html", "text /plain"}, true, false},
+        {{"text/plain; note=\"a,text/html\""}, false, false},
+        {{"text/html; note=\"a,text/plain\""}, true, false},
+        {{"text/html; note=\"a,\\\"text/plain\""}, true, false},
+    };
+    for (const auto &test : mediaCases) {
+        QList<QPair<QString, QString>> headers;
+        for (const auto &value : test.values) headers.append({"Content-Type", value});
+        const auto label = ("effective media type: " + test.values.join(" | ")).toUtf8();
+        chk(label.constData(), canExecuteHtml(headers) == test.html);
+        if (test.values.size() == 1)
+            chk(label.constData(), isHtmlContentType(test.values.first()) == test.html);
+        headers.append(qMakePair(QStringLiteral("X-Content-Type-Options"), QStringLiteral("nosniff")));
+        chk(label.constData(), canExecuteHtml(headers) == (test.html && !test.sniffed));
+    }
+
     // ===== queryWith: preserve others, replace target, percent-encode =====
     chk("queryWith replaces target, keeps others, encodes",
         [](){ const QString q = queryWith("a=1&b=2", "b", "<nlk>");
