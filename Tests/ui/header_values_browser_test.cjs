@@ -10,11 +10,12 @@ const sniffCases = [
   [[], false, false], [['nosniff'], true, true], [['NoSnIfF'], true, true],
   [['\tnosniff\t'], true, true], [['not-nosniff'], false, false],
   [['nosniff-extra'], false, false], [['"nosniff"'], false, false],
-  [['nosniff;'], false, false], [['nosniff, invalid'], true, false],
+  [['nosniff;'], false, false], [['nosniff, invalid'], true, true],
   [['invalid, nosniff'], false, false], [['', 'nosniff'], false, false],
-  [[',nosniff'], false, false], [['nosniff', 'invalid'], true, false],
-  [['invalid', 'nosniff'], false, false], [['nosniff', 'nosniff'], true, false],
-  [['nosniff, nosniff'], true, false], [['\u00a0nosniff\u00a0'], false, false],
+  [[',nosniff'], false, false], [['nosniff', 'invalid'], true, true],
+  [['invalid', 'nosniff'], false, false], [['nosniff', 'nosniff'], true, true],
+  [['nosniff, nosniff'], true, true], [['\u00a0nosniff\u00a0'], false, false],
+  [['nosniff', ''], true, true],
 ];
 const referrerCases = [
   [[], ''], [['unsafe-url'], 'unsafe-url'], [['UNSAFE-URL'], 'unsafe-url'],
@@ -83,6 +84,8 @@ function close(server) {
     await listen(server);
     const origin = `http://127.0.0.1:${server.address().port}`;
     browser = await chromium.launch({ headless: true });
+    // Keep failures diagnosable when the pinned Playwright browser is updated.
+    console.log(`Header-value comparisons: Chromium ${browser.version()}`);
     for (const [values, scriptBlocked, documentBlocked] of sniffCases) {
       active = values;
       const headers = values.map(v => ['X-Content-Type-Options', v]);

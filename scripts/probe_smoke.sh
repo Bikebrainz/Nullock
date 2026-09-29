@@ -808,9 +808,8 @@ def make(mode):
                     # flagged: regression-locks the headline attribute-quote FP.
                     self._send(200, ('<input data-x="a>b" value=%s>' % val).encode()); return
                 if mode in ('xss-nosniff', 'xss-nosniff-invalid', 'xss-nosniff-combined', 'xss-nosniff-repeated'):
-                    # Untyped documents stop sniffing only for a single exact
-                    # nosniff value. Malformed, comma-combined and repeated
-                    # variants still execute the raw element-content reflection.
+                    # Chromium 151 uses the first nosniff token for untyped
+                    # documents too. Lookalikes do not block execution.
                     body = ('<html><body>Results for: %s</body></html>' % val).encode()
                     self.send_response(200)
                     values = {'xss-nosniff': ['nosniff'], 'xss-nosniff-invalid': ['not-nosniff'],
@@ -1174,8 +1173,11 @@ chk "xss vulnerable -> confirmed"       "$(post /api/xss/test "{\"url\":\"$(url 
 chk "xss safe -> not vulnerable"        "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-safe]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "xss attr-context (raw, but in attribute) -> NOT vulnerable (headline FP fix)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-attr]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "xss raw reflection but nosniff+no-CT -> NOT vulnerable (sniff guard)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-nosniff]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
-for variant in xss-nosniff-invalid xss-nosniff-combined xss-nosniff-repeated; do
+for variant in xss-nosniff-invalid; do
   chk "xss untyped reflection remains executable ($variant)" "$(post /api/xss/test "{\"url\":\"$(url ${P[$variant]} '?q=test')\"}")" "d.get('ok') and d.get('vulnerable')"
+done
+for variant in xss-nosniff-combined xss-nosniff-repeated; do
+  chk "xss first nosniff token blocks untyped reflection ($variant)" "$(post /api/xss/test "{\"url\":\"$(url ${P[$variant]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 done
 
 echo "== HTTP method audit =="

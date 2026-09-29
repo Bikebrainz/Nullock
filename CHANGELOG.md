@@ -15,9 +15,11 @@ developer-facing record.
   header checks, including repeated fields, fallback keywords and malformed tokens.
 - Preserve nonbreaking spaces and other non-HTTP-whitespace bytes when parsing
   header values so normalization cannot turn malformed values into valid tokens.
-- Keep script/style MIME enforcement separate from document sniffing so malformed
-  or combined `nosniff` values cannot hide an executable reflected-XSS response.
-  Compare both decisions with real Chromium responses in CI.
+- Match the reflected-XSS document-sniffing gate to Chromium 151: the first
+  `nosniff` token blocks untyped documents, including comma-combined and repeated
+  fields. Malformed lookalikes remain ineffective; explicit HTML still executes.
+  Compare these decisions with the pinned Chromium browser used by CI. Older
+  Chromium versions can handle combined values differently.
 
 ### Documentation
 - Refresh project copy and historical review references, and replace temporary

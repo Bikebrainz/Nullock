@@ -28,13 +28,7 @@ bool nosniffForScriptsAndStyles(const Headers &headers) {
 }
 
 bool nosniffForDocuments(const Headers &headers) {
-    bool found = false;
-    for (const auto &h : headers) {
-        if (h.first.compare("X-Content-Type-Options", Qt::CaseInsensitive) != 0) continue;
-        if (found || asciiLower(trimHttpWhitespace(h.second)) != "nosniff") return false;
-        found = true;
-    }
-    return found;
+    return nosniffForScriptsAndStyles(headers);
 }
 
 QString referrerPolicy(const Headers &headers) {

@@ -66,9 +66,9 @@ int main(int argc, char **argv) {
     const SniffCase sniffCases[] = {
         {{}, false}, {{"nosniff"}, true}, {{"NoSnIfF"}, true}, {{"\tnosniff\t"}, true},
         {{"not-nosniff"}, false}, {{"nosniff-extra"}, false}, {{"\"nosniff\""}, false},
-        {{"nosniff;"}, false}, {{"nosniff, invalid"}, false}, {{"invalid, nosniff"}, false},
-        {{"nosniff", "invalid"}, false}, {{"nosniff", "nosniff"}, false},
-        {{"nosniff", ""}, false}, {{"", "nosniff"}, false},
+        {{"nosniff;"}, false}, {{"nosniff, invalid"}, true}, {{"invalid, nosniff"}, false},
+        {{"nosniff", "invalid"}, true}, {{"nosniff", "nosniff"}, true},
+        {{"nosniff", ""}, true}, {{"", "nosniff"}, false},
         {{QString::fromUtf8("noſniff")}, false}, {{QString(QChar(0xa0)) + "nosniff"}, false},
     };
     for (const auto &test : sniffCases) {
