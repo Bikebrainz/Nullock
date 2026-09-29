@@ -10,6 +10,13 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Reflected XSS HTML contexts
+- Treat iframe fallback text as inert and recognize raw-text elements by exact
+  HTML tag names. Custom names such as `script-custom` no longer hide later
+  reflections. Handle abruptly closed comments (`<!-->` and `<!--->`).
+- Add native, API and pinned-browser regressions. Mark reflected-XSS parity as
+  partial because inert template and foreign-content parsing gaps remain.
+
 ### Reflected-XSS media types
 - Parse the effective Content-Type across repeated fields and comma-separated
   values instead of searching for an HTML substring. Plain-text parameters and

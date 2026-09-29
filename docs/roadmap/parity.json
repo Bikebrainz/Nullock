@@ -969,17 +969,17 @@
     {
       "area": "scanner",
       "feature": "[A12] Active audit: reflected XSS",
-      "state": "present",
+      "state": "partial",
       "impact": "low",
       "effort": "hours",
-      "gap": "Reflected element-content checks only; stored and DOM XSS remain outside this probe. Document sniffing models Chromium 151; older browsers may execute untyped documents with combined nosniff values.",
-      "why": "The reflected-XSS probe is reachable through /api/xss/test and the deep audit. It selects the last usable Content-Type across repeated and comma-combined fields, respects quoted parameter commas, rejects HTML lookalikes and applies the nosniff gate to unknown types. Native and browser regressions cover Chromium 151 behavior.",
-      "evidence": "Src/Core/Networking/xss_reflected.cpp; xss_logic.cpp effectiveMediaType/canExecuteHtml; response_header_values.cpp; Tests/xss_reflected/xss_reflected_test.cpp; Tests/ui/header_values_browser_test.cjs; Tests/ui/xss_media_types_browser_test.cjs; scripts/probe_smoke.sh xss-media and xss-nosniff fixtures.",
+      "gap": "The reduced HTML tokenizer still misclassifies inert template content and some SVG/MathML contexts; it is not a complete browser parser. XML document execution, stored XSS and DOM XSS remain outside this probe. Document sniffing models Chromium 151; older browsers can differ on combined nosniff values.",
+      "why": "The public API and deep audit detect reflected tags using effective Content-Type/nosniff values and HTML context checks. Exact raw-text tag names, iframe fallback content and abrupt comment endings now match pinned Chromium comparisons. Confirmed template and foreign-content mismatches prevent a full-parity claim.",
+      "evidence": "Src/Core/Networking/xss_logic.cpp effectiveMediaType/canExecuteHtml/inExecutingHtmlContext; Tests/xss_reflected/xss_reflected_test.cpp; Tests/ui/xss_context_browser_test.cjs; Tests/ui/xss_media_types_browser_test.cjs; scripts/probe_smoke.sh xss-context, xss-media and xss-nosniff fixtures.",
       "audited_state": "present",
       "reconciled": {
         "date": "2026-09-29",
-        "commit": "78942017",
-        "note": "Replace substring Content-Type matching with effective media-type parsing. Covers repeated headers, malformed lookalikes, quoted parameters and unknown-type sniffing with native, public-API and pinned-browser regressions. Stored/DOM XSS and browser-version limitations remain."
+        "commit": "b392a63b",
+        "note": "Correct 66 browser/analyzer mismatches involving custom tag names, iframe fallback text and abrupt comment closure. Add 95 pinned-browser context comparisons and five public-API fixtures. Downgrade present to partial after separately reproducing template and SVG context gaps; those cases remain follow-up work."
       }
     },
     {
