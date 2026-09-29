@@ -10,6 +10,16 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Repeater CLI and roadmap
+- Load captured requests by stable history ID from the CLI; reject invalid or
+  missing IDs without replacing the current draft. Preserve full binary bodies.
+- Keep asynchronous send polling alive beyond its first iteration. Report rejected
+  sends and unfinished waits as failures instead of printing an old response.
+- Add `repeater stop`, which stops after the current response and skips redirects.
+- Reconcile roadmap claims about Repeater responsiveness, editor views, body
+  decoding and private-key permissions. Binary response Hex fidelity and immediate
+  socket cancellation remain incomplete.
+
 ### Reflected XSS HTML contexts
 - Treat iframe fallback text as inert and recognize raw-text elements by exact
   HTML tag names. Custom names such as `script-custom` no longer hide later

@@ -4018,17 +4018,17 @@
     {
       "area": "proxy",
       "feature": "CA private key hardening on disk",
-      "state": "exceeds",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "leaves/*.key inherit default permissions -- and those keys are signed by the trusted root, so reading one still lets a same-user process impersonate that host. Additionally every error branch in lockdownPrivateKeyFile (cert_authority.cpp:44-65) returns without logging, so a failure is silent.",
-      "why": "Verified the Windows DACL rewrite (single ACE, PROTECTED_DACL_SECURITY_INFORMATION, NO_INHERITANCE) and the POSIX chmod fallback, plus the re-assert on every startup for pre-existing keys. This genuinely is beyond Burp. The stated leaf-key hole is real -- I confirmed the persist writes at cert_authority.cpp:259-265 call no lockdown. I also found a second hole worth recording: every failure path in",
-      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:56-74 `ea.grfAccessPermissions = GENERIC_ALL; ... SetNamedSecurityInfoW(..., DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr, nullptr, pNewDacl, nullptr);`; POSIX at :77-78 `QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);`; re-assert at :134-141. Leaf keys bypass it: cert_authority.cpp:263-265 `out.setFileName(persist",
+      "gap": "Restrictions cover CA and persisted leaf keys. They separate OS accounts; they do not isolate other programs running as the owning user. Unsupported filesystems or ACL failures produce warnings rather than preventing startup.",
+      "why": "The code applies owner-only POSIX permissions or a Windows ACL for the current user when creating and reusing CA and leaf keys. Call sites report failures. The older claims that leaf keys bypass hardening and failures are silent no longer match the source; a comparison-based exceeds grade is not retained.",
+      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp lockdownPrivateKeyFile; ensureCa creation/reuse; leafCertFor creation/reuse; qWarning at every hardening call site.",
       "audited_state": "exceeds",
       "reconciled": {
-        "date": "2026-08-11",
-        "commit": "942da87",
-        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+        "date": "2026-09-29",
+        "commit": "c2af0a33",
+        "note": "Reconciled against current source and focused CLI, application and browser checks. Correct stale behavior/evidence and state the remaining limits. Grade changed from exceeds to present."
       }
     },
     {
@@ -4783,13 +4783,13 @@
       "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "Two defects remain, one narrowed since the last pass: (1) any file upload / multipart / non-textual POST arrives in the Repeater as the literal text `[binary N bytes, multipart/form-data; boundary=...]`; (2) bodies over the preview cap arrive truncated with a marker appended -- both with the captured Content-Length still in the headers. The id/index confusion is now FIXED for the browser button (it calls the dedicated addFromHistoryId endpoint) but still live in the CLI: `nullock repeater load <row-id>` calls the index-based endpoint despite its own usage text calling the argument a row-id. Also still only one source (proxy history) -- no Send to Repeater from sitemap, issues, Intruder results or Comparer.",
-      "why": "DOWNGRADED-then-partially-fixed. The auditor stopped at the endpoint. Re-following addTabFromHistory into the model confirms the loaded text is still a RENDERED PREVIEW, not the raw request: multipart bodies are replaced with a placeholder string and bodies over the preview cap are truncated, while the original Content-Length header is kept. Separately, a second endpoint (addTabFromHistoryById) now exists and IS used by the browser button, closing that half of the id/index bug -- but the CLI's documented `<row-id>` path still hits the index-based endpoint, so the same class of bug remains reachable from the command line.",
-      "evidence": "Src/Core/Networking/repeater.cpp:383 addTabFromHistory(int row) vs :400 addTabFromHistoryById(int id) -- two distinct entry points now exist. ui-v2/app.jsx:68 `act(\"repeaterTabAddFromHistoryId\", row.id)` (browser button, fixed) vs bin/nullock's `load)` case: `post /api/repeater/tab/addFromHistory \"{\\\"row\\\":$row}\"` where $row is the user-supplied value the usage text calls `<row-id>` (CLI, still buggy). Body rendering: Src/FrontEnd/GUI/Models/Proxy/proxy_model.cpp:141 looksTextual(), :163 `return QString(\"[binary %1 bytes, %2]\")...`, :174 requestRawAt() (line drift from the prior 128-160/151-160 citation, content unchanged).",
+      "gap": "History loading preserves full request bytes, including binary bodies and bodies beyond the former preview limit. Browser and CLI use stable history IDs. Dedicated pivots from every tool, including Intruder result rows and Comparer, are not implemented.",
+      "why": "The history-ID endpoint reads the actual request from memory or the history index and serializes it without preview truncation. The CLI now calls that endpoint and rejects missing or invalid IDs. Browser history, the shared site-map detail pane and Intercept expose Repeater entry points.",
+      "evidence": "Src/BackEnd/Control/control_server.cpp /api/repeater/tab/addFromHistoryId; Src/Core/Networking/repeater.cpp setRequestBytes/addTabFromHistoryById; ui-v2/app.jsx send-to-repeater and send-to-repeater-raw; bin/nullock cmd_repeater; scripts/repeater_cli_runtime.py; scripts/runtime_regression.py binary history checks.",
       "reconciled": {
-        "date": "2026-08-31",
-        "commit": "bd03640",
-        "note": "Wave 0 register-accuracy audit: held at partial, with one real fix found. The browser 'send to Repeater' button (ui-v2/app.jsx:68) now calls repeaterTabAddFromHistoryId -> POST /api/repeater/tab/addFromHistoryId {id}, which routes to the new Repeater::addTabFromHistoryById(int id) (repeater.cpp:400) -- the id-vs-index bug the prior audit found in the browser path is fixed. The CLI is NOT: `nullock repeater load <row-id>` (bin/nullock, documented as taking a row-id) still POSTs to /api/repeater/tab/addFromHistory {row:$row} -- the INDEX-based endpoint (control_server.cpp:3710 -> addTabFromHistory(int row), repeater.cpp:383) -- so the CLI still silently loads the wrong row on a non-trivial id/index gap. The binary-placeholder and 64KB-truncation defects are unchanged: proxy_model.cpp's requestRawAt still renders a `[binary N bytes, ...]` placeholder for non-textual bodies and truncates text bodies over kMaxBodyPreviewBytes, in both cases leaving the captured Content-Length header untouched. Gap text narrowed to reflect the browser-path fix."
+        "date": "2026-09-29",
+        "commit": "c2af0a33",
+        "note": "Reconciled against current source and focused CLI, application and browser checks. Correct stale behavior/evidence and state the remaining limits."
       }
     },
     {
@@ -5364,7 +5364,7 @@
       "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "None for hand-built or freshly-generated bodies -- a \u21c4 ENCODING button in the Repeater request pane-head converts application/x-www-form-urlencoded <-> multipart/form-data via the pure repeaterChangeBodyEncoding() helper (generates a random boundary, wraps each param as a form-data part, or parses an existing multipart body's boundary/parts back into urlencoded pairs), recomputing Content-Type/Content-Length either way. One real limit remains, tracked separately and not claimed fixed here: item #303's send-to-Repeater path still replaces a captured multipart body with a `[binary N bytes, ...]` placeholder before it ever reaches this editor, so this button cannot yet round-trip a multipart body that arrived via Send to Repeater -- only ones typed/generated directly in the editor.",
+      "gap": "None for hand-built or freshly-generated bodies -- a \u21c4 ENCODING button in the Repeater request pane-head converts application/x-www-form-urlencoded <-> multipart/form-data via the pure repeaterChangeBodyEncoding() helper (generates a random boundary, wraps each param as a form-data part, or parses an existing multipart body's boundary/parts back into urlencoded pairs), recomputing Content-Type/Content-Length either way. Captured requests now load their full bodies. This conversion operates on form field names and values; multipart file metadata and opaque binary file parts are not preserved when converting to URL-encoded form data.",
       "why": "Closed 2026-08-17: added repeaterChangeBodyEncoding() (ui-v2/tabs.jsx), reusing the same repeaterSplitRaw/repeaterBuildRaw/repeaterSetHeader parser family as #339's method-swap button. Wired to a new \u21c4 ENCODING button next to it. The #303 capture-time multipart-destruction defect is a separate, already-tracked gap this frontend-only change does not touch.",
       "evidence": "ui-v2/tabs.jsx repeaterChangeBodyEncoding() (boundary-aware multipart part parser + builder) and repeaterUrlDecode(); the \u21c4 ENCODING button in RepeaterTab's REQUEST pane-head dispatches {type:\"repeater-set\", payload:{request: repeaterChangeBodyEncoding(rep.request)}}. #303's placeholder-body defect (control_server.cpp send-to-Repeater path) is the named remaining limit, unchanged by this wave.",
       "reconciled": {
@@ -5391,18 +5391,18 @@
     },
     {
       "area": "repeater",
-      "feature": "Repeater: message editor views \u2014 Pretty / Raw / Hex for both request and response",
-      "state": "present",
+      "feature": "Repeater: message editor views — Pretty / Raw / Hex for both request and response",
+      "state": "partial",
       "impact": "high",
       "effort": "hours",
-      "gap": "Reading a binary or gzipped response in Repeater is impossible. renderView/toHexDump take no component state, so wiring them into the Repeater panes is genuinely an hours-scale job.",
-      "why": "Confirmed, and the 'machinery is one file over' claim checks out exactly \u2014 renderView + toHexDump are pure functions taking (raw, view).",
-      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx Repeater panes are two bare textareas ('REQUEST \u00b7 editable' / 'RESPONSE \u00b7 read-only'). Proxy has the tabs: ui-v2/proxy.jsx:349-352 `{[\"raw\", \"headers\", \"body\", \"hex\"].map(t => (` and :363-366 `{[\"raw\", \"headers\", \"body\", \"preview\", \"hex\"].map(t => (`, backed by `function renderView(raw, view)` (proxy.jsx:1093) and `function toHexDump(s)` (proxy.jsx:1113, 64 KiB cap).",
+      "gap": "The views exist, but the Repeater response is converted from bytes to UTF-8 text before the Hex view receives it. Invalid UTF-8 bytes become replacement characters; the Hex view shows the encoded display text rather than the original response bytes.",
+      "why": "The browser offers Raw, Headers, Body, Preview and Hex views for both panes, with a static Render view for responses. A live response containing bytes 00 ff 80 41 becomes text 00 U+FFFD U+FFFD 41, so the full byte-fidelity requirement remains incomplete.",
+      "evidence": "ui-v2/tabs.jsx RepeaterEditorToolbar, reqText and respText; ui-v2/proxy.jsx toHexDump uses TextEncoder; Src/Core/Networking/repeater.cpp send converts rawResponse/decodedBody through QString::fromUtf8.",
       "audited_state": "absent",
       "reconciled": {
-        "date": "2026-08-08",
-        "commit": "cd03a95",
-        "note": "Both request and response panes now have Raw/Headers/Body/Preview/Hex view tabs, reusing proxy.jsx's renderView()/toHexDump(). Editing stays in Raw (matches Burp); other views are derived read-only transforms."
+        "date": "2026-09-29",
+        "commit": "c2af0a33",
+        "note": "Reconciled against current source and focused CLI, application and browser checks. Correct stale behavior/evidence and state the remaining limits. Grade changed from present to partial."
       }
     },
     {
@@ -5413,13 +5413,13 @@
       "effort": "hours",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-13",
-        "commit": "9fd3523",
-        "note": "Repeater::send recomputes Content-Length from the body via the chain runner's audited normalizeContentLength (which also collapses a duplicate CL and drops CL under Transfer-Encoding: chunked). autoContentLength toggle (Q_PROPERTY + /api/repeater/set + state snapshot) defaults on; off sends bytes verbatim for a deliberate CL/TE desync. Gauntlet ctest 93/93, probe_smoke 156/156. Follow-up same-day UI wiring (9fd3523): the toggle had no GUI affordance to turn it off, so an AUTO-CL checkbox was added next to TLS in Repeater's target row (ui-v2/tabs.jsx), bound through the existing generic repeater-set reducer action (same passthrough pattern as the adjacent TLS checkbox) to POST /api/repeater/set{autoContentLength}. No backend touched by the UI follow-up."
+        "date": "2026-09-29",
+        "commit": "c2af0a33",
+        "note": "Reconciled against current source and focused CLI, application and browser checks. Correct stale behavior/evidence and state the remaining limits."
       },
-      "gap": "None -- Repeater::send recomputes Content-Length from the actual body before sending (Burp's default). An AUTO-CL checkbox in the target row lets a tester turn that off from the GUI to deliberately desync, matching both Burp's behaviour and its escape hatch.",
-      "why": "Closed 2026-08-13: Repeater::send pipes the CRLF-normalized request through ChainRunner::normalizeContentLength when autoContentLength is on (default), recomputing CL from the body; that helper is unit-tested by the chain_runner suite (and collapses duplicate CL / drops CL under TE:chunked). Toggle wired through control_server (/api/repeater/set + snapshot). Verified by the full gauntlet. GUI reachability for the off-switch closed same day via an AUTO-CL checkbox in Repeater's target row, verified by a vm-sandboxed render test of RepeaterTab across true/false/undefined autoContentLength states plus the onChange dispatch path.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.cpp:124-136 normalizes CRLF then `const auto result = m_client.send(t.host, static_cast<quint16>(t.port), t.useTls, bytes);` \u2014 `grep -i 'content-length' repeater.cpp` returns nothing. In networking.cpp every Content-Length hit (:277-327) is response framing: `// Every Content-Length field line, not just the first ... result.errorMessage = \"invalid or con"
+      "gap": "AUTO-CL recomputes the outgoing body length by default. Turning it off preserves deliberately malformed request framing for manual testing.",
+      "why": "Repeater::send encodes the complete request and calls ChainRunner::normalizeContentLength when enabled. The browser exposes the setting. Native helper tests and live binary-request regressions cover length recomputation without truncating or changing the request body.",
+      "evidence": "Src/Core/Networking/repeater.cpp send and NetworkingLogic::encodeRequestText; Src/Core/Networking/chain_runner.cpp normalizeContentLength; ui-v2/tabs.jsx AUTO-CL checkbox; Tests/chain_runner; scripts/runtime_regression.py; scripts/repeater_cli_runtime.py."
     },
     {
       "area": "repeater",
@@ -5442,29 +5442,29 @@
       "state": "present",
       "impact": "high",
       "effort": "hours",
-      "gap": "HttpClient::send (networking.cpp) now decodes Content-Encoding gzip/x-gzip/deflate into result.parsed.decodedBody via the existing decodeContentEncoding() helper, and Repeater::send() swaps the decoded body into the response pane in place of the compressed bytes (header block shown verbatim, wire bytes untouched). Still partial, not present: brotli/zstd remain unsupported (content_decode.hpp's own documented limit, unchanged), and this cloud session cannot build/run ctest/probe_smoke to confirm the change compiles and behaves as intended -- resting on GitHub Actions CI going green, not a local build, per this repo's honest-partial convention for backend changes made from this environment.",
-      "why": "Wiring fix: decodeContentEncoding already existed and was already proven correct for the MITM proxy path (content_decode.cpp, its own dedicated test suite); this pins the second, previously-missing call site into HttpClient::send so both Repeater and the template engine's body matching benefit.",
-      "evidence": "Src/Core/Networking/networking.cpp: added #include \"content_decode.hpp\" + a Content-Encoding lookup and decodeContentEncoding() call right before result.ok = true, populating result.parsed.decodedBody without touching result.parsed.body or result.rawResponse. Src/Core/Networking/repeater.cpp send(): when result.parsed.decodedBody is non-empty, responseText is now the original header block (bytes up to and including the first \\r\\n\\r\\n in rawResponse) followed by the decoded body, instead of QString::fromUtf8(rawResponse) verbatim.",
+      "gap": "gzip, x-gzip and deflate are decoded for display. Brotli and zstd remain unsupported. Display retains the original response headers, including compressed Content-Length; the decoded text is not a raw wire export.",
+      "why": "HttpClient populates decodedBody through decodeContentEncoding, and Repeater displays it with the original header block. The content_decode native suite tests gzip and both wrapped/raw deflate. The former statement that the change could not be built is stale.",
+      "evidence": "Src/BackEnd/Proxy/content_decode.cpp; Src/Core/Networking/networking.cpp decodeContentEncoding call; Src/Core/Networking/repeater.cpp decodedBody display; Tests/content_decode/content_decode_test.cpp.",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-19",
-        "commit": "1490bec",
-        "note": "partial -> present. The gzip/deflate unpack wiring (code in 1490bec) is now LOCALLY verified, retiring the honest-partial 'cloud session cannot build' caveat: content_decode_test proves decodeContentEncoding round-trips gzip/x-gzip/deflate (zlib-wrapped and raw), and a fresh e2e vs a raw-socket mock upstream returning a real `Content-Encoding: gzip` 200 confirms the Repeater response pane renders the DECODED body while keeping the header block (incl. the Content-Encoding line + compressed Content-Length) verbatim and leaving the wire bytes untouched. brotli/zstd are out of scope for this item (title is 'gzip / deflate'; they remain content_decode.hpp's documented limit). ctest 99/99, probe_smoke 156/156."
+        "date": "2026-09-29",
+        "commit": "c2af0a33",
+        "note": "Reconciled against current source and focused CLI, application and browser checks. Correct stale behavior/evidence and state the remaining limits."
       }
     },
     {
       "area": "repeater",
       "feature": "Repeater: cancel an in-flight request; non-blocking send",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "A tarpitting target can freeze the whole control/GUI thread for up to 5 minutes with no escape \u2014 the browser UI stops updating entirely, not just the Repeater. The m_busy guard also serializes all tabs, which is what undermines A1.",
-      "why": "Confirmed, and worse than described. The control server's QTcpServer lives on the same thread the blocking send runs on, so a slow target freezes the ENTIRE app (snapshot polling included), and the whole-call read budget is five minutes. Fresh grep for cancel/abort in repeater.cpp/.hpp: zero hits.",
-      "evidence": "Synchronous send: Src/Core/Networking/repeater.cpp:135 `void Repeater::send() { ... auto result = m_client.send(...) ... }` -> Src/Core/Networking/networking.cpp:190 `if (!socket->waitForConnected(kTimeoutMs))`, :198 `if (!socket->waitForBytesWritten(kTimeoutMs))`, with networking.cpp:22 `constexpr int kTimeoutMs = 15'000;` and Src/Core/Networking/networking_logic.hpp:75 `constexpr qint64 kMaxTotalReadMs = 300'000;` (line drift from the prior 133/189-197/21/75 citation, values and conclusion unchanged).",
+      "gap": "Send runs on a worker and the UI remains responsive. Stop marks cancellation and prevents later redirects after the current response finishes; it does not immediately abort a stalled socket. One request can run at a time across all tabs.",
+      "why": "sendAsync copies the request into a worker and applies the result without replacing newer edits. Browser/API Stop and the CLI stop command share the cancellation flag. Live API and browser regressions verify responsiveness, busy state, draft preservation and redirect cancellation.",
+      "evidence": "Src/Core/Networking/repeater.cpp sendAsync/cancel; ui-v2/tabs.jsx Repeater Stop; bin/nullock repeater stop; scripts/control_responsiveness_regression.py; Tests/ui/repeater_responsiveness_browser_test.cjs; scripts/repeater_cli_test.py.",
       "reconciled": {
-        "date": "2026-08-31",
-        "commit": "bd03640",
-        "note": "Wave 0 register-accuracy audit: held at absent. Repeater::send() (repeater.cpp:135) is still fully synchronous -- it calls HttpClient::send() inline, which blocks on QTcpSocket::waitForConnected/waitForBytesWritten (networking.cpp, kTimeoutMs = 15'000) and reads for up to kMaxTotalReadMs = 300'000 (networking_logic.hpp:75, unchanged at 5 minutes). A fresh grep for cancel/abort across repeater.cpp/.hpp returns zero hits -- there is still no way to interrupt an in-flight send, and since the control server's QTcpServer lives on the same thread, a tarpitting target still freezes the whole app for up to 5 minutes. No code change this pass."
+        "date": "2026-09-29",
+        "commit": "c2af0a33",
+        "note": "Reconciled against current source and focused CLI, application and browser checks. Correct stale behavior/evidence and state the remaining limits. Grade changed from absent to partial."
       }
     },
     {
