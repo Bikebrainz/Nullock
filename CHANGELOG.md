@@ -1659,7 +1659,9 @@ developer-facing record.
   the mechanism the doc comment always described actually produces a report
   now instead of only ever being reachable from a crash signal.
 
-## [3.8.0] — 2026-08-20
+## 3.8.0 — unpublished draft
+
+Notes prepared August 20, 2026. This version has not been published as a GitHub release.
 
 This release folds in a large security-and-correctness pass: a whole-codebase
 security review (16 findings, from a CRITICAL CI-action fix down to
