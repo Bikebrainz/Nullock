@@ -101,12 +101,27 @@ QA + scope conversations.
 - `POST /api/scope/notes`
 - `POST /api/rules/{add,update,remove,toggle,move}`
 - `POST /api/repeater/{set,send,stop,clear,tab/{add,addFromHistory,addFromHistoryId,close,activate,rename,duplicate}}`
+
 - `POST /api/intruder/{set,start,stop,clear,resend}`
 - `POST /api/theme` / `/api/theme/save-as` / `/api/theme/reload`
 - `POST /api/clear-history`, `/api/mitm/clear-blocked`
 - `POST /api/extensions/reload`
 - `POST /api/findings/clear`
 - `POST /api/project/{list,open,create}`
+
+### Repeater request input
+
+`nullock repeater set <host> <port> <tls> [request-file|-]` preserves file or
+stdin bytes, including binary bodies and trailing newlines. An empty file clears
+the request; omitting the input keeps the current draft. The command requires
+`base64` alongside Bash, curl and jq.
+
+For binary API input, `/api/repeater/set` accepts a `requestBase64` string. Do not
+combine it with `request` or `requestEncoding`: ambiguous or invalid input returns
+HTTP 400 before changing the target or draft. Decoded UTF-8 stays readable; other
+bytes use a reversible Latin-1 editor mapping. Existing text input remains
+supported. This preserves input bytes; normal send settings still apply, including
+header newline normalization and automatic Content-Length updates.
 
 ### Active scanning
 - `POST /api/history/<id>/probe` — per-row active scan

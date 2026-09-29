@@ -11,6 +11,10 @@ developer-facing record.
 ## [Unreleased]
 
 ### Repeater CLI and roadmap
+- Preserve file and stdin request bytes in `repeater set`, including NULs,
+  invalid UTF-8 and trailing newlines. Empty input clears the request; omitted
+  input preserves it. Reject unreadable files and invalid API base64 before
+  changing the destination or draft.
 - Load captured requests by stable history ID from the CLI; reject invalid or
   missing IDs without replacing the current draft. Preserve full binary bodies.
 - Keep asynchronous send polling alive beyond its first iteration. Report rejected

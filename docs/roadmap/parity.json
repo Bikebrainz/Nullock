@@ -4784,12 +4784,12 @@
       "impact": "high",
       "effort": "days",
       "gap": "History loading preserves full request bytes, including binary bodies and bodies beyond the former preview limit. Browser and CLI use stable history IDs. Dedicated pivots from every tool, including Intruder result rows and Comparer, are not implemented.",
-      "why": "The history-ID endpoint reads the actual request from memory or the history index and serializes it without preview truncation. The CLI now calls that endpoint and rejects missing or invalid IDs. Browser history, the shared site-map detail pane and Intercept expose Repeater entry points.",
-      "evidence": "Src/BackEnd/Control/control_server.cpp /api/repeater/tab/addFromHistoryId; Src/Core/Networking/repeater.cpp setRequestBytes/addTabFromHistoryById; ui-v2/app.jsx send-to-repeater and send-to-repeater-raw; bin/nullock cmd_repeater; scripts/repeater_cli_runtime.py; scripts/runtime_regression.py binary history checks.",
+      "why": "The history-ID endpoint reads the actual request from memory or the history index and serializes it without preview truncation. The CLI now calls that endpoint and rejects missing or invalid IDs. Browser history, the shared site-map detail pane and Intercept expose Repeater entry points. File and stdin loading now send base64 to the same reversible byte mapping, preserving NULs, invalid UTF-8 and trailing newlines.",
+      "evidence": "Src/BackEnd/Control/control_server.cpp /api/repeater/tab/addFromHistoryId; Src/Core/Networking/repeater.cpp setRequestBytes/addTabFromHistoryById; ui-v2/app.jsx send-to-repeater and send-to-repeater-raw; bin/nullock cmd_repeater; scripts/repeater_cli_runtime.py; scripts/runtime_regression.py binary history checks. /api/repeater/set requestBase64; CLI file/stdin runtime tests with 76,804-byte bodies.",
       "reconciled": {
         "date": "2026-09-29",
-        "commit": "c2af0a33",
-        "note": "Reconciled against current source and focused CLI, application and browser checks. Correct stale behavior/evidence and state the remaining limits."
+        "commit": "697499b7",
+        "note": "CLI file and stdin input preserve raw body bytes. Empty input clears the draft, omitted input preserves it, and invalid base64 is rejected before mutation. Existing missing tool pivots keep the grade partial."
       }
     },
     {
@@ -5391,7 +5391,7 @@
     },
     {
       "area": "repeater",
-      "feature": "Repeater: message editor views — Pretty / Raw / Hex for both request and response",
+      "feature": "Repeater: message editor views \u2014 Pretty / Raw / Hex for both request and response",
       "state": "partial",
       "impact": "high",
       "effort": "hours",
