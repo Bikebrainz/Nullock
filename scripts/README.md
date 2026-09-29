@@ -56,6 +56,9 @@ compares MIME sniffing and referrer-policy decisions with actual browser request
   and `Tests/ui/node_modules/.bin/playwright install chromium` first so local
   validation uses the same pinned browser as CI; an unrelated Playwright install
   can have different document-sniffing behavior.
+  `node Tests/ui/xss_media_types_browser_test.cjs <xss_reflected_test>` compares
+  effective Content-Type handling, quoted parameters, repeated fields, downloads
+  and unknown-type sniffing against that same browser.
 `replay_fuzz_corpus.py <build-dir>` replays committed parser seeds against built
 fuzz harnesses. `container_smoke.py <base-url>` checks the container service;
 use the fixture setup and environment from CI.

@@ -973,13 +973,13 @@
       "impact": "low",
       "effort": "hours",
       "gap": "Reflected element-content checks only; stored and DOM XSS remain outside this probe. Document sniffing models Chromium 151; older browsers may execute untyped documents with combined nosniff values.",
-      "why": "The reflected-XSS probe is reachable through /api/xss/test and the deep audit. Its HTML execution gate now parses nosniff tokens exactly and handles repeated fields, with expected behavior checked against CI's pinned Chromium 151. Explicit HTML remains executable and explicit plain text remains inert.",
-      "evidence": "Src/Core/Networking/xss_reflected.cpp; xss_logic.cpp canExecuteHtml; response_header_values.cpp; Tests/xss_reflected/xss_reflected_test.cpp; Tests/ui/header_values_browser_test.cjs; scripts/probe_smoke.sh xss-nosniff fixtures.",
+      "why": "The reflected-XSS probe is reachable through /api/xss/test and the deep audit. It selects the last usable Content-Type across repeated and comma-combined fields, respects quoted parameter commas, rejects HTML lookalikes and applies the nosniff gate to unknown types. Native and browser regressions cover Chromium 151 behavior.",
+      "evidence": "Src/Core/Networking/xss_reflected.cpp; xss_logic.cpp effectiveMediaType/canExecuteHtml; response_header_values.cpp; Tests/xss_reflected/xss_reflected_test.cpp; Tests/ui/header_values_browser_test.cjs; Tests/ui/xss_media_types_browser_test.cjs; scripts/probe_smoke.sh xss-media and xss-nosniff fixtures.",
       "audited_state": "present",
       "reconciled": {
         "date": "2026-09-29",
-        "commit": "0665e41b",
-        "note": "Corrected the document-sniffing model for the pinned Chromium 151 browser, including combined and repeated nosniff fields and malformed lookalikes. Browser-version and stored/DOM limitations remain explicit."
+        "commit": "78942017",
+        "note": "Replace substring Content-Type matching with effective media-type parsing. Covers repeated headers, malformed lookalikes, quoted parameters and unknown-type sniffing with native, public-API and pinned-browser regressions. Stored/DOM XSS and browser-version limitations remain."
       }
     },
     {

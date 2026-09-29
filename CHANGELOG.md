@@ -10,6 +10,14 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Reflected-XSS media types
+- Parse the effective Content-Type across repeated fields and comma-separated
+  values instead of searching for an HTML substring. Plain-text parameters and
+  lookalike types no longer produce HTML findings; the last usable media type
+  determines the response format.
+- Respect quoted parameter commas and the browser's unknown-type sniffing rules,
+  including the `nosniff` gate. Add native, public-API and pinned-browser coverage.
+
 ### TLS certificate compatibility
 - Include subject and authority key identifiers in generated proxy certificates
   so strict TLS clients accept leaves minted by LibreSSL as well as OpenSSL.
