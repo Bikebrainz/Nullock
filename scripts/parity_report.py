@@ -117,8 +117,8 @@ def build(doc):
                     " Showing the %d most recent of %d reconciled since the audit; "
                     "the full set is in the capability table below." % (RECENT_CAP, len(reconciled)))
         recent = ("""<section class="panel">
-    <h2>Recently closed</h2>
-    <p class="muted" style="font-size:13.5px;">Gaps reconciled since the audit, newest first, each with the date and the commit that made it true.%s</p>
+    <h2>Recently updated</h2>
+    <p class="muted" style="font-size:13.5px;">Capabilities reconciled since the audit, including closed gaps and corrections, newest first. Each entry records its date and implementation commit.%s</p>
     <ul class="rm-recent">%s</ul>
   </section>""" % (cap_note, rows))
 

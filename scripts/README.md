@@ -52,7 +52,10 @@ and `node Tests/ui/csp_policy_browser_test.cjs <header_audit_test>` after instal
 analyzer with single, repeated and comma-combined response policies.
 `node Tests/ui/header_values_browser_test.cjs <header_audit_test> <xss_reflected_test>`
 compares MIME sniffing and referrer-policy decisions with actual browser requests,
-including malformed values and repeated fields.
+  including malformed values and repeated fields. Run `npm ci --prefix Tests/ui`
+  and `Tests/ui/node_modules/.bin/playwright install chromium` first so local
+  validation uses the same pinned browser as CI; an unrelated Playwright install
+  can have different document-sniffing behavior.
 `replay_fuzz_corpus.py <build-dir>` replays committed parser seeds against built
 fuzz harnesses. `container_smoke.py <base-url>` checks the container service;
 use the fixture setup and environment from CI.

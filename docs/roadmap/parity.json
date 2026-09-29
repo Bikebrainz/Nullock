@@ -1,6 +1,6 @@
 {
   "audit_date": "2026-07-30",
-  "reconciled_through": "2026-09-11",
+  "reconciled_through": "2026-09-29",
   "method": "Eight parallel readers enumerated Burp Suite's feature set per area and graded Nullock by reading its source; a second adversarial pass per area re-opened every cited file and corrected in both directions (51 verdicts changed). States are reconciled forward as features ship -- each change records the commit that made it true.",
   "grades": {
     "absent": "nothing implements it",
@@ -846,13 +846,13 @@
       "impact": "low",
       "effort": "hours",
       "gap": "",
-      "why": "Re-read passive_scanner.cpp:218-238 (CSP/HSTS/XFO/XCTO/RP table, HSTS gated on wasTls) and 408-431 (Permissions-Policy+Feature-Policy fallback, COOP, COEP, CORP). Runs on every proxied response via onResponseReceived (passive_scanner.hpp:71-73). All nine headers present and live.",
-      "evidence": "passive_scanner.cpp:219 `{ \"Content-Security-Policy\", \"missing-csp\", ... }` ... :412 `addFinding(...,\"missing-permissions-policy\"...)` :417 missing-coop :422 missing-coep :427 missing-corp",
+      "why": "Passive checks run on proxied responses. XCTO and Referrer-Policy now use shared effective-value parsing: the first nosniff token controls MIME protection, and the last recognized referrer policy survives unknown fallback keywords. Malformed tokens and nonbreaking spaces cannot count as configured protection.",
+      "evidence": "Src/Core/Networking/passive_scanner.cpp; response_header_values.cpp; networking_logic.cpp; Src/BackEnd/Proxy/proxy_logic.cpp; Tests/scanner_regression/scanner_regression_test.cpp; Tests/header_audit/header_audit_test.cpp; Tests/ui/header_values_browser_test.cjs; scripts/probe_smoke.sh.",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-11",
-        "commit": "942da87",
-        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+        "date": "2026-09-29",
+        "commit": "0665e41b",
+        "note": "Hardened active and passive security-header parsing for repeated fields, fallback policies and malformed whitespace. Native regressions and pinned Chromium comparisons cover effective values. Existing capability remains present."
       }
     },
     {
@@ -972,14 +972,14 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Reflected-only by design (stored/DOM out of scope per xss_reflected.hpp:12).",
-      "why": "Re-read control_server.cpp:729-737 (XssReflected::test in runDeepAudit) and xss_reflected.hpp:1-13 (conservative element-content reflection confirm). Also independently reachable via the GUI probe path (control_server.cpp:2141-2154 canary reflection). Present on both surfaces.",
-      "evidence": "control_server.cpp:733 `const auto res = Nullock::Core::XssReflected::test(xrr);`; :2148 GUI probe emits reflected-xss on unencoded canary",
+      "gap": "Reflected element-content checks only; stored and DOM XSS remain outside this probe. Document sniffing models Chromium 151; older browsers may execute untyped documents with combined nosniff values.",
+      "why": "The reflected-XSS probe is reachable through /api/xss/test and the deep audit. Its HTML execution gate now parses nosniff tokens exactly and handles repeated fields, with expected behavior checked against CI's pinned Chromium 151. Explicit HTML remains executable and explicit plain text remains inert.",
+      "evidence": "Src/Core/Networking/xss_reflected.cpp; xss_logic.cpp canExecuteHtml; response_header_values.cpp; Tests/xss_reflected/xss_reflected_test.cpp; Tests/ui/header_values_browser_test.cjs; scripts/probe_smoke.sh xss-nosniff fixtures.",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-11",
-        "commit": "942da87",
-        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+        "date": "2026-09-29",
+        "commit": "0665e41b",
+        "note": "Corrected the document-sniffing model for the pinned Chromium 151 browser, including combined and repeated nosniff fields and malformed lookalikes. Browser-version and stored/DOM limitations remain explicit."
       }
     },
     {
