@@ -11,6 +11,9 @@ developer-facing record.
 ## [Unreleased]
 
 ### Repeater CLI and roadmap
+- Report response presence per tab instead of treating missing response text as
+  a completed response. Clear elapsed-time and byte-count metadata on duplicated
+  tabs along with their response.
 - Preserve file and stdin request bytes in `repeater set`, including NULs,
   invalid UTF-8 and trailing newlines. Empty input clears the request; omitted
   input preserves it. Reject unreadable files and invalid API base64 before

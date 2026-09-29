@@ -4858,17 +4858,18 @@
     {
       "area": "repeater",
       "feature": "Repeater: headless / scriptable driving of the tool",
-      "state": "exceeds",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "hasResponse is always true (confirmed both ends). `repeater load` takes an id where the API wants an index (see A3). And bin/nullock is a bash script \u2014 on the owner's Windows box it needs Git Bash; task #8 'Native cross-platform CLI' is still open.",
-      "why": "Verified line by line, including the hasResponse defect, which I confirmed from the other side: the snapshot's per-tab object genuinely never emits responseText.",
-      "evidence": "bin/nullock:275 `cmd_repeater()` covering set|send|show|response|clear|load|tabs|tab{add,close,activate,rename,duplicate}; send polls correctly (bin/nullock:293-301): `post /api/repeater/send >/dev/null` then `busy=$(snapshot | \"$JQ\" -r '.repeater.busy'); [[ $busy == false ]] && break`. hasResponse defect reconfirmed from the backend side: the per-tab snapshot object (control_server.cpp:1624-1646) emits name, host, port, tls, statusLine, elapsedMs, responseBytes, notes, history -- never responseText -- so bin/nullock:333's `hasResponse: (.responseText != \"\")` always evaluates `null != \"\"` -> true.",
+      "gap": "The CLI requires Bash, curl and jq, plus base64 for file/stdin loading; a native Windows CLI remains unimplemented. Send waits for a bounded period and reports unfinished requests explicitly. Stop completes after the current response rather than aborting the socket.",
+      "why": "History loads use stable IDs, asynchronous sends survive multiple busy polls, and binary file/stdin bodies retain their bytes. Tab summaries read an explicit per-tab response flag; fresh or duplicated tabs no longer claim a response. Duplicating a request clears its response metadata.",
+      "evidence": "bin/nullock cmd_repeater; Src/BackEnd/Control/control_server.cpp snapshot hasResponse and requestBase64; Src/Core/Networking/repeater.cpp duplicateTab; scripts/repeater_cli_test.py and scripts/repeater_cli_runtime.py.",
       "reconciled": {
-        "date": "2026-08-27",
-        "commit": "",
-        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
-      }
+        "date": "2026-09-29",
+        "commit": "f5dcae31",
+        "note": "Verified the CLI through owned API fixtures and a real app: history IDs, asynchronous sends, Stop, binary file/stdin input and tab response state. Replaced stale defect descriptions and removed an unverified exceeds comparison."
+      },
+      "audited_state": "exceeds"
     },
     {
       "area": "repeater",
