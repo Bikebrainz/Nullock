@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Repeater CLI and roadmap
+- Reject empty drafts and blank target hosts before accepting an API send, so
+  the CLI cannot report a previous response as a successful new request.
+- Report response presence per tab instead of treating missing response text as
+  a completed response. Clear elapsed-time and byte-count metadata on duplicated
+  tabs along with their response.
+- Preserve file and stdin request bytes in `repeater set`, including NULs,
+  invalid UTF-8 and trailing newlines. Empty input clears the request; omitted
+  input preserves it. Reject unreadable files and invalid API base64 before
+  changing the destination or draft.
 - Load captured requests by stable history ID from the CLI; reject invalid or
   missing IDs without replacing the current draft. Preserve full binary bodies.
 - Keep asynchronous send polling alive beyond its first iteration. Report rejected

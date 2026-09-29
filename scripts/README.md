@@ -23,7 +23,7 @@ validated here; fragments in committed HTML are checked against actual IDs.
 
 ## Application regression checks
 
-Repeater CLI checks require Bash, curl and jq:
+Repeater CLI checks require Bash, curl, jq and base64:
 
 ```sh
 python scripts/repeater_cli_test.py
@@ -31,8 +31,9 @@ python scripts/repeater_cli_runtime.py path/to/NullockApp
 ```
 
 The first command checks API contracts, pending sends and failures. The second
-starts an isolated app and verifies history IDs and a full binary request through
-the CLI. Set `BASH_EXE` or `JQ` when those tools are outside `PATH`.
+starts an isolated app and verifies history IDs, complete binary request bodies,
+file/stdin input, UTF-8 text and rejected base64 without draft changes.
+Set `BASH_EXE` or `JQ` when those tools are outside `PATH`.
 
 
 Build the application first, then pass its executable as the positional argument

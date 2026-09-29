@@ -513,6 +513,8 @@ int Repeater::duplicateTab(int index) {
     copy.name = m_tabs[index].name + " (copy)";
     copy.responseText.clear();
     copy.statusLine.clear();
+    copy.elapsedMs = -1;
+    copy.responseBytes = -1;
     m_tabs.append(copy);
     m_active = m_tabs.size() - 1;
     emitAllSlots();

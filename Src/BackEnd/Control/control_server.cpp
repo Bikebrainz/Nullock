@@ -1612,6 +1612,7 @@ QByteArray ControlServer::buildSnapshot() const {
             to["statusLine"] = t.statusLine;
             to["elapsedMs"]     = t.elapsedMs;
             to["responseBytes"] = t.responseBytes;
+            to["hasResponse"] = !t.responseText.isEmpty();
             to["notes"]      = t.notes;
             // Per-tab send history (compact: status + timestamp + metadata per prior
             // send) so the UI can render a navigable list; a full entry is loaded
@@ -3697,12 +3698,28 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
 
     if (path == "/api/repeater/set") {
+        QByteArray requestBytes;
+        const bool hasRequestBytes = bodyJson.contains("requestBase64");
+        if (hasRequestBytes) {
+            // Validate before changing the destination or draft. Binary input
+            // has one unambiguous representation and uses the same reversible
+            // byte-to-editor mapping as captured requests.
+            if (!bodyJson.value("requestBase64").isString()
+                || bodyJson.contains("request") || bodyJson.contains("requestEncoding"))
+                return httpJson(400, {{"ok", false}, {"error", "requestBase64 must be a string without request or requestEncoding"}});
+            const auto decoded = QByteArray::fromBase64Encoding(
+                bodyJson.value("requestBase64").toString().toUtf8(), QByteArray::AbortOnBase64DecodingErrors);
+            if (!decoded)
+                return httpJson(400, {{"ok", false}, {"error", "Invalid requestBase64"}});
+            requestBytes = decoded.decoded;
+        }
         if (m_wiring.repeater) {
             if (bodyJson.contains("host"))    m_wiring.repeater->setHost(bodyJson.value("host").toString());
             if (bodyJson.contains("port"))    m_wiring.repeater->setPort(bodyJson.value("port").toInt());
             if (bodyJson.contains("tls"))     m_wiring.repeater->setUseTls(bodyJson.value("tls").toBool());
             if (bodyJson.contains("request")) m_wiring.repeater->setRequestText(bodyJson.value("request").toString());
             if (bodyJson.contains("requestEncoding")) m_wiring.repeater->setRequestLatin1(bodyJson.value("requestEncoding").toString() == "latin1");
+            if (hasRequestBytes) m_wiring.repeater->setRequestBytes(requestBytes);
             // Burp's "Update Content-Length" toggle. On by default; set false to
             // send bytes verbatim for a hand-crafted CL/TE smuggling desync.
             if (bodyJson.contains("autoContentLength"))
@@ -3723,12 +3740,16 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson();
     }
     if (path == "/api/repeater/send") {
-        if (m_wiring.repeater && blocksScope(m_wiring.repeater->host()))
+        if (!m_wiring.repeater)
+            return httpJson(503, {{"ok", false}, {"error", "Repeater is unavailable"}});
+        if (m_wiring.repeater->busy())
+            return httpJson(409, {{"ok", false}, {"error", "A Repeater request is already running"}});
+        if (m_wiring.repeater->host().trimmed().isEmpty() || m_wiring.repeater->requestText().isEmpty())
+            return httpJson(400, {{"ok", false}, {"error", "Repeater requires a target host and request"}});
+        if (blocksScope(m_wiring.repeater->host()))
             return okJson({{ "ok", false }, { "scopeBlocked", true },
                 { "error", "repeater target '" + m_wiring.repeater->host() + "' is out of scope" }});
-        if (m_wiring.repeater && m_wiring.repeater->busy())
-            return httpJson(409, {{"ok", false}, {"error", "A Repeater request is already running"}});
-        if (m_wiring.repeater) m_wiring.repeater->sendAsync();
+        m_wiring.repeater->sendAsync();
         return okJson();
     }
     if (path == "/api/repeater/clear") {

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Repeater CLI contract checks against an owned loopback API fixture."""
+import base64
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
@@ -25,7 +27,9 @@ class Handler(BaseHTTPRequestHandler):
         state['polls'] += 1
         busy = state['hold'] or state['polls'] < 3
         self.reply({'repeater': {'busy': busy, 'statusLine': 'pending' if busy else 'HTTP/1.1 200 OK',
-                                  'response': 'old response' if busy else 'completed fixture'}})
+                                  'response': 'old response' if busy else 'completed fixture',
+                                  'tabs': [{'hasResponse': False, 'responseBytes': 120}, {'hasResponse': True},
+                                           {'responseBytes': -1}, {'responseBytes': 120}, {}]}})
     def do_POST(self):
         data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         received.append((self.path, data, self.headers.get('X-Nullock-UI')))
@@ -45,12 +49,34 @@ def main():
     worker = Thread(target=server.serve_forever, daemon=True)
     worker.start()
     env = {**os.environ, 'NULLOCK_API': f'http://127.0.0.1:{server.server_port}'}
-    def run(*args, success=True, timeout=30):
+    def run(*args, success=True, timeout=30, input_bytes=None):
         result = subprocess.run([bash, 'bin/nullock', 'repeater', *args], cwd=ROOT, env=env,
-                                capture_output=True, text=True, encoding='utf-8', timeout=timeout)
+                                capture_output=True, input=input_bytes, timeout=timeout)
+        result.stdout = result.stdout.decode('utf-8')
+        result.stderr = result.stderr.decode('utf-8')
         assert (result.returncode == 0) == success, (args, result.returncode, result.stdout, result.stderr)
         return result
     try:
+        assert [tab['hasResponse'] for tab in json.loads(run('tabs').stdout)['tabs']] == [False, True, False, True, False]
+        print('PASS: tab response flags and legacy metadata distinguish fresh tabs', flush=True)
+        raw = b'POST /bytes HTTP/1.1\r\nHost: fixture.test\r\n\r\n' + bytes(range(256)) + b'\n\n'
+        with tempfile.TemporaryDirectory(prefix='nullock-cli-bytes-') as temporary:
+            request = Path(temporary) / 'request bytes.bin'
+            for content in [raw, b'']:
+                request.write_bytes(content)
+                for source in [request.as_posix(), '-']:
+                    run('set', 'fixture.test', '80', 'false', source,
+                        input_bytes=content if source == '-' else None)
+                    path, payload, guard = received[-1]
+                    assert path == '/api/repeater/set' and guard == '1'
+                    assert base64.b64decode(payload['requestBase64'], validate=True) == content
+                    assert 'request' not in payload and 'requestEncoding' not in payload
+            count = len(received)
+            run('set', 'fixture.test', '80', 'false', (Path(temporary) / 'missing').as_posix(), success=False)
+            assert len(received) == count, 'unreadable input must not change the draft'
+        run('set', 'fixture.test', '80', 'false')
+        assert 'requestBase64' not in received[-1][1], 'omitting a file must preserve the current draft'
+        print('PASS: files and stdin preserve all bytes, empty input and trailing newlines', flush=True)
         run('load', '17')
         assert received[-1] == ('/api/repeater/tab/addFromHistoryId', {'id': 17}, '1'), received[-1]
         assert 'History row not found' in run('load', '999', success=False).stderr
