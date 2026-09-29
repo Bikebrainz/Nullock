@@ -125,9 +125,10 @@ def main():
         env['OPENSSL_CONF'] = str(scratch/'does-not-exist.cnf')
         log = open(scratch/'app.log','wb')
         try:
-            process = subprocess.Popen([str(app_path),'--no-browser' if args.gui else '--headless','--no-update-check',
+            app_command = [str(app_path),'--no-browser' if args.gui else '--headless','--no-update-check',
                 f'--project={initial}',f'--control-port={ctl}',f'--proxy-port={proxy}',
-                f'--oast-port={free_port()}',f'--dns-port={free_port()}'],
+                f'--oast-port={free_port()}',f'--dns-port={free_port()}']
+            process = subprocess.Popen(app_command,
                 env=env,stdout=log,stderr=log,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
             for _ in range(120):
@@ -175,6 +176,9 @@ def main():
             tls_mock.socket = tls_context.wrap_socket(tls_mock.socket, server_side=True)
             threading.Thread(target=tls_mock.serve_forever, daemon=True).start()
             trust = ssl.create_default_context(cafile=str(scratch/'app-data/ca/ca.pem'))
+            # Python 3.13+ enables strict checks by default. Exercise the same
+            # certificate requirements on older CI interpreters as well.
+            trust.verify_flags |= ssl.VERIFY_X509_STRICT
             untrusted = http.client.HTTPSConnection('127.0.0.1', proxy, context=trust, timeout=15)
             rejected = False
             try:
@@ -183,6 +187,9 @@ def main():
                 response = untrusted.getresponse()
                 rejected = response.status >= 400
                 response.read()
+            except ssl.SSLCertVerificationError:
+                # A bad proxy leaf is not proof that origin verification worked.
+                raise
             except (OSError, http.client.HTTPException):
                 rejected = True
             finally:
@@ -196,6 +203,51 @@ def main():
                 tunnel.request('GET', '/tls-package')
                 response = tunnel.getresponse()
                 check('packaged proxy completes a local HTTPS transaction', response.status==200 and response.read()==b'OK')
+            finally:
+                tunnel.close()
+            # Simulate a leaf cached by older LibreSSL builds: right subject and
+            # issuer, but no authority key identifier. It must be regenerated.
+            legacy_ext = scratch/'legacy-leaf.ext'
+            extensions = ('subjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\n'
+                          'keyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n')
+            version = subprocess.check_output([openssl, 'version'], env=fixture_env, text=True)
+            if version.startswith('OpenSSL'):
+                # Modern OpenSSL inserts these automatically; LibreSSL does not.
+                extensions += 'subjectKeyIdentifier=none\nauthorityKeyIdentifier=none\n'
+            legacy_ext.write_text(extensions)
+            cached_leaf = leaves/'127.0.0.1.pem'
+            legacy_req = scratch/'legacy-req.cnf'
+            legacy_req.write_text('[req]\ndistinguished_name=dn\n[dn]\nCN=127.0.0.1\n')
+            for command in (
+                [openssl, 'req', '-new', '-key', str(scratch/'tls.key'), '-subj', '/CN=127.0.0.1',
+                 '-config', str(legacy_req), '-out', str(scratch/'legacy.csr')],
+                [openssl, 'x509', '-req', '-in', str(scratch/'legacy.csr'),
+                 '-CA', str(scratch/'app-data/ca/ca.pem'), '-CAkey', str(scratch/'app-data/ca/ca.key'),
+                 '-CAcreateserial', '-days', '1', '-extfile', str(legacy_ext), '-out', str(cached_leaf)],
+            ):
+                subprocess.run(command, env=fixture_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            shutil.copyfile(scratch/'tls.key', leaves/'127.0.0.1.key')
+            legacy_bytes = cached_leaf.read_bytes()
+            # Restart to exercise the persisted cache, not the already minted
+            # in-memory certificate from the first transaction.
+            api('/api/app/quit', {})
+            check('application exits before checking persisted certificates', process.wait(timeout=15) == 0)
+            process = subprocess.Popen(app_command, env=env, stdout=log, stderr=log,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            for _ in range(120):
+                if process.poll() is not None: raise RuntimeError('app failed to restart')
+                try: api('/api/snapshot', timeout=.25); break
+                except OSError: time.sleep(.1)
+            else: raise RuntimeError('app did not restart')
+            api('/api/proxy/accept-invalid-hosts/add', {'host':f'127.0.0.1:{tls_mock.server_port}'})
+            tunnel = http.client.HTTPSConnection('127.0.0.1', proxy, context=trust, timeout=15)
+            try:
+                tunnel.set_tunnel('127.0.0.1', tls_mock.server_port)
+                tunnel.request('GET', '/tls-legacy-cache')
+                response = tunnel.getresponse()
+                check('legacy cached certificate is replaced and accepted by a strict TLS client',
+                      response.status == 200 and response.read() == b'OK' and cached_leaf.read_bytes() != legacy_bytes)
             finally:
                 tunnel.close()
             send(f'GET /redirect HTTP/1.1\r\nHost: {host}\r\nCookie: original=fixture\r\n\r\n')

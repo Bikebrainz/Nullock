@@ -57,6 +57,14 @@ InterimAction classifyInterimResponse(const StatusLine &status, int seen, int ma
 }
 
 QList<QPair<QString, QString>> parseHeaders(const QByteArray &block) {
+    // HTTP optional whitespace is SP/HTAB, not Unicode whitespace. Preserve
+    // other bytes so malformed security-header values cannot become valid.
+    const auto fieldValue = [](const QByteArray &value) {
+        qsizetype first = 0, end = value.size();
+        while (first < end && (value[first] == ' ' || value[first] == '\t')) ++first;
+        while (end > first && (value[end - 1] == ' ' || value[end - 1] == '\t')) --end;
+        return QString::fromLatin1(value.constData() + first, end - first);
+    };
     QList<QPair<QString, QString>> out;
     const QList<QByteArray> lines = block.split('\n');
     for (int i = 1; i < lines.size(); ++i) {
@@ -71,7 +79,7 @@ QList<QPair<QString, QString>> parseHeaders(const QByteArray &block) {
         // attacker-controlled framing divergence feeding every detection module.
         if (line.startsWith(' ') || line.startsWith('\t')) {
             if (!out.isEmpty()) {
-                const QString cont = QString::fromLatin1(line).trimmed();
+                const QString cont = fieldValue(line);
                 if (!cont.isEmpty())
                     out.last().second = out.last().second.isEmpty()
                         ? cont : out.last().second + QLatin1Char(' ') + cont;
@@ -82,7 +90,7 @@ QList<QPair<QString, QString>> parseHeaders(const QByteArray &block) {
         if (colon <= 0) continue;
         out.append({
             QString::fromLatin1(line.left(colon)).trimmed(),
-            QString::fromLatin1(line.mid(colon + 1)).trimmed(),
+            fieldValue(line.mid(colon + 1)),
         });
     }
     return out;

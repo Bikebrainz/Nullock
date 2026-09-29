@@ -1,6 +1,6 @@
 {
   "audit_date": "2026-07-30",
-  "reconciled_through": "2026-09-11",
+  "reconciled_through": "2026-09-29",
   "method": "Eight parallel readers enumerated Burp Suite's feature set per area and graded Nullock by reading its source; a second adversarial pass per area re-opened every cited file and corrected in both directions (51 verdicts changed). States are reconciled forward as features ship -- each change records the commit that made it true.",
   "grades": {
     "absent": "nothing implements it",
@@ -846,13 +846,13 @@
       "impact": "low",
       "effort": "hours",
       "gap": "",
-      "why": "Re-read passive_scanner.cpp:218-238 (CSP/HSTS/XFO/XCTO/RP table, HSTS gated on wasTls) and 408-431 (Permissions-Policy+Feature-Policy fallback, COOP, COEP, CORP). Runs on every proxied response via onResponseReceived (passive_scanner.hpp:71-73). All nine headers present and live.",
-      "evidence": "passive_scanner.cpp:219 `{ \"Content-Security-Policy\", \"missing-csp\", ... }` ... :412 `addFinding(...,\"missing-permissions-policy\"...)` :417 missing-coop :422 missing-coep :427 missing-corp",
+      "why": "Passive checks run on proxied responses. XCTO and Referrer-Policy now use shared effective-value parsing: the first nosniff token controls MIME protection, and the last recognized referrer policy survives unknown fallback keywords. Malformed tokens and nonbreaking spaces cannot count as configured protection.",
+      "evidence": "Src/Core/Networking/passive_scanner.cpp; response_header_values.cpp; networking_logic.cpp; Src/BackEnd/Proxy/proxy_logic.cpp; Tests/scanner_regression/scanner_regression_test.cpp; Tests/header_audit/header_audit_test.cpp; Tests/ui/header_values_browser_test.cjs; scripts/probe_smoke.sh.",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-11",
-        "commit": "942da87",
-        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+        "date": "2026-09-29",
+        "commit": "0665e41b",
+        "note": "Hardened active and passive security-header parsing for repeated fields, fallback policies and malformed whitespace. Native regressions and pinned Chromium comparisons cover effective values. Existing capability remains present."
       }
     },
     {
@@ -972,14 +972,14 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Reflected-only by design (stored/DOM out of scope per xss_reflected.hpp:12).",
-      "why": "Re-read control_server.cpp:729-737 (XssReflected::test in runDeepAudit) and xss_reflected.hpp:1-13 (conservative element-content reflection confirm). Also independently reachable via the GUI probe path (control_server.cpp:2141-2154 canary reflection). Present on both surfaces.",
-      "evidence": "control_server.cpp:733 `const auto res = Nullock::Core::XssReflected::test(xrr);`; :2148 GUI probe emits reflected-xss on unencoded canary",
+      "gap": "Reflected element-content checks only; stored and DOM XSS remain outside this probe. Document sniffing models Chromium 151; older browsers may execute untyped documents with combined nosniff values.",
+      "why": "The reflected-XSS probe is reachable through /api/xss/test and the deep audit. Its HTML execution gate now parses nosniff tokens exactly and handles repeated fields, with expected behavior checked against CI's pinned Chromium 151. Explicit HTML remains executable and explicit plain text remains inert.",
+      "evidence": "Src/Core/Networking/xss_reflected.cpp; xss_logic.cpp canExecuteHtml; response_header_values.cpp; Tests/xss_reflected/xss_reflected_test.cpp; Tests/ui/header_values_browser_test.cjs; scripts/probe_smoke.sh xss-nosniff fixtures.",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-11",
-        "commit": "942da87",
-        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+        "date": "2026-09-29",
+        "commit": "0665e41b",
+        "note": "Corrected the document-sniffing model for the pinned Chromium 151 browser, including combined and repeated nosniff fields and malformed lookalikes. Browser-version and stored/DOM limitations remain explicit."
       }
     },
     {
@@ -3991,13 +3991,13 @@
       "impact": "medium",
       "effort": "hours",
       "gap": "Leaf carries a single SAN (DNS:<host> for a normal hostname target, or IP:<addr> for an IPv4/IPv6 literal target via CertLogic::sanEntryForHost -- see item #286 for that IP-SAN work's own state). Burp clones the upstream cert's full subject/SAN set; Nullock does not, so a client pinning on issuer-independent fields (multi-SAN, OU, serial) still breaks -- multi-SAN/wildcard leaves and the live-handshake forged-leaf path are #286's tracked remainder. Whole path is gated on an external openssl binary (item 6).",
-      "why": "Verified verbatim -- the openssl req/x509 pair and the SAN/EKU ext file are exactly as quoted, and the leaf is installed on the client leg. Kept 'present'. Re-rated user_impact from 'blocker' to 'medium': the mechanism works, so the number should describe the residual gap (single DNS SAN, no upstream-cert cloning), not the importance of the feature.",
-      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:246-250 `subjectAltName = %1` now built from `CertLogic::sanEntryForHost(host)` (dynamic DNS:/IP: SAN, not a hardcoded DNS: literal); :254-263 `\"req\", \"-new\", \"-nodes\", \"-newkey\", \"rsa:2048\", ... \"-subj\", \"/CN=\" + host`; :265-277 `\"x509\", \"-req\", ... \"-CA\", m_caCertPath, \"-CAkey\", m_caKeyPath, \"-CAcreateserial\", \"-days\", \"365\", ... \"-extfile\", extPath`. Installed at proxy_server.cpp:459 `cfg.setLocalCertificate(cert);`.",
+      "why": "CertAuthority mints per-host RSA leaves signed by the local CA, with DNS/IP SANs, serverAuth usage, and explicit subject/authority key identifiers for OpenSSL and LibreSSL compatibility.",
+      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp leaf extension configuration; cert_logic.cpp sanEntryForHost; scripts/runtime_regression.py packaged HTTPS transaction with strict certificate verification.",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-27",
-        "commit": "",
-        "note": "Wave 0 register-accuracy audit: re-verified against live source. Found real drift: the gap text's \"No IP SAN (see Group B #6)\" claim is now STALE -- 983fca1 (2026-08-26, closed the same day as this parity.json entry's last touch, but this item itself was never revisited) made subjectAltName dynamic via CertLogic::sanEntryForHost, which emits an IP: SAN for both IPv4 and IPv6 literal hosts (cert_logic.cpp:98-101) instead of always DNS:<host>. Item #286 (\"Per-host leaf certificates for IP-address and IPv6 targets\") already tracks the IP-SAN work accurately as partial (multi-SAN/wildcard + live-handshake MITM socket path remain) -- corrected this item's gap text to stop duplicating a now-false claim and point at #286 instead. No state change (present is still correct for the DNS-SAN leaf-minting mechanism this item describes); refreshed evidence line numbers."
+        "date": "2026-09-29",
+        "commit": "784284db",
+        "note": "Declare leaf key identifiers explicitly so strict TLS clients accept LibreSSL-generated certificates. Runtime regression exercises real proxy HTTPS with strict validation enabled on every Python version."
       }
     },
     {
@@ -4006,13 +4006,13 @@
       "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Cached leaves are never re-minted on expiry. 366 days after first contact with a host, MITM for that host breaks and the host is auto-added to the permanent blind-tunnel blocklist. There is also no cache-eviction or 'clear leaves' control -- the only recovery is deleting <caDir>/leaves by hand.",
-      "why": "DOWNGRADED. The persist/reload code is exactly as quoted, but I opened cert_authority.hpp and found the reuse check is only a non-emptiness test -- there is no notAfter check anywhere on the reload path. Leaves are minted with `-days 365` and then reused from disk forever. That is not 'better than Burp'; it is a one-year fuse Burp cannot have (Burp re-mints per session). On expiry the browser refu",
-      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:199-205 `if (QFileInfo::exists(persistCert) && QFileInfo::exists(persistKey)) {\\n        LeafCert cached; ... if (cached.valid()) {\\n            m_cache.insert(host, cached);\\n            return cached;` -- and the only validity test is Src/BackEnd/Proxy/cert_authority.hpp:15 `bool valid() const { return !certPem.isEmpty() && !keyPem.isEmpty(); }`. Minted with `-days 365` at cert_authority.cpp:271. No notAfter/expiry check exists anywhere on the reuse path -- confirmed unchanged.",
+      "gap": "Disk-cache reuse checks certificate parsing, subject, validity dates and authority key identifier. Cache eviction, a clear-leaves control, and complete CA/key rollover validation remain unavailable.",
+      "why": "CertAuthority::leafCertFor regenerates expired, wrong-subject and legacy leaves lacking an authority key identifier. Valid leaves persist across restarts and their private-key permissions are reapplied on reuse.",
+      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp leafCertFor; scripts/runtime_regression.py strict TLS transaction, wrong-subject cache fixture and legacy-certificate replacement after application restart.",
       "reconciled": {
-        "date": "2026-08-27",
-        "commit": "",
-        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+        "date": "2026-09-29",
+        "commit": "784284db",
+        "note": "Regenerate legacy cached leaves missing authority key identifiers; corrected the stale claim that expired leaves are never replaced. Strict TLS regression covers persisted-cache replacement after restart."
       }
     },
     {

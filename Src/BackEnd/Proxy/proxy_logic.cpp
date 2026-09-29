@@ -17,6 +17,14 @@ bool hasControlByte(const QString &s) {
 } // namespace
 
 QList<QPair<QString, QString>> parseHeaders(const QByteArray &headerBlock) {
+    // Preserve non-OWS bytes for downstream header validation, matching the
+    // active client's parser. QString::trimmed would erase nonbreaking spaces.
+    const auto fieldValue = [](const QByteArray &value) {
+        qsizetype first = 0, end = value.size();
+        while (first < end && (value[first] == ' ' || value[first] == '\t')) ++first;
+        while (end > first && (value[end - 1] == ' ' || value[end - 1] == '\t')) --end;
+        return QString::fromLatin1(value.constData() + first, end - first);
+    };
     QList<QPair<QString, QString>> headers;
     const QList<QByteArray> lines = headerBlock.split('\n');
     for (int i = 1; i < lines.size(); ++i) {           // line 0 is the request/status line
@@ -31,7 +39,7 @@ QList<QPair<QString, QString>> parseHeaders(const QByteArray &headerBlock) {
         // NetworkingLogic::parseHeaders; this proxy twin shared the parse.
         if (line.startsWith(' ') || line.startsWith('\t')) {
             if (!headers.isEmpty()) {
-                const QString cont = QString::fromLatin1(line).trimmed();
+                const QString cont = fieldValue(line);
                 if (!cont.isEmpty())
                     headers.last().second = headers.last().second.isEmpty()
                         ? cont : headers.last().second + QLatin1Char(' ') + cont;
@@ -42,7 +50,7 @@ QList<QPair<QString, QString>> parseHeaders(const QByteArray &headerBlock) {
         if (colon <= 0) continue;
         headers.append({
             QString::fromLatin1(line.left(colon)).trimmed(),
-            QString::fromLatin1(line.mid(colon + 1)).trimmed()
+            fieldValue(line.mid(colon + 1))
         });
     }
     return headers;

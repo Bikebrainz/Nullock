@@ -43,6 +43,25 @@
   <div class="wrap">
     <div class="log">
 
+      <article class="rel" id="unreleased">
+        <div class="rel-meta">
+          <span class="rel-ver">Unreleased</span>
+          <span class="caption">Updated Sep 29, 2026</span>
+          <span class="badge"><span class="dot"></span>development</span>
+        </div>
+        <div class="rel-body">
+          <p class="rel-note">Security checks now distinguish effective response headers from malformed lookalikes. These changes are in the development build; v3.8.0 remains the latest release listed below.</p>
+          <ul>
+            <li><span class="tag fix">fix</span> <strong>Proxy certificates work with strict TLS clients.</strong> Generated certificates explicitly include key identifiers on both OpenSSL and LibreSSL. Older cached leaves missing an authority key identifier are replaced when loaded after a restart.</li>
+            <li><span class="tag fix">fix</span> <strong>More accurate security-header findings.</strong> Active and passive checks handle repeated fields, comma-separated values and Referrer-Policy fallbacks. Values such as <code class="inline">not-nosniff</code> no longer count as protection, and unknown fallback policies no longer hide an effective <code class="inline">unsafe-url</code> policy.</li>
+            <li><span class="tag fix">fix</span> <strong>Reflected-XSS checks follow the tested browser.</strong> The document-sniffing gate matches Chromium 151: a first <code class="inline">nosniff</code> token blocks an untyped document even when more values follow. Malformed tokens remain ineffective, and explicit HTML remains executable. Older Chromium versions can treat combined values differently.</li>
+            <li><span class="tag fix">fix</span> <strong>Preserve malformed header bytes.</strong> The HTTP client and proxy trim only HTTP spaces and tabs, so a nonbreaking space cannot turn an invalid security header into a valid one.</li>
+            <li><span class="tag fix">fix</span> <strong>Recent scanner corrections.</strong> Repeated CSP policies are evaluated together; WebSocket hijack confirmation requires a credential-free denial; JWT header mutations preserve the captured payload, and offline key-reference checks report review leads without fetching URLs.</li>
+          </ul>
+          <p>See the <a href="roadmap/index.html">updated roadmap</a>, <a href="https://github.com/Bikebrainz/Nullock/pull/21">header-validation changes</a> and <a href="https://github.com/Bikebrainz/Nullock/blob/Nullock/CHANGELOG.md">full development changelog</a> for scope and remaining work.</p>
+        </div>
+      </article>
+
       <article class="rel">
         <div class="rel-meta">
           <span class="rel-ver">v3.8.0</span>

@@ -34,6 +34,14 @@ HV H(std::initializer_list<QPair<QString, QString>> xs) { HV h; for (const auto 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
 
+    for (unsigned char pad : {0xa0, 0x85, 0x0b, 0x0c, 0x0d, 0x00}) {
+        const QByteArray value = QByteArray(1, char(pad)) + "nosniff" + char(pad);
+        const auto direct = parseHeaders("HTTP/1.1 200 OK\r\nX-Test: \t" + value + "\t \r\n");
+        chk("non-OWS value bytes survive parsing", findHeader(direct, "X-Test") == QString::fromLatin1(value));
+        const auto folded = parseHeaders("HTTP/1.1 200 OK\r\nX-Test: prefix\r\n \t" + value + "\t \r\n");
+        chk("non-OWS continuation bytes survive unfolding", findHeader(folded, "X-Test") == "prefix " + QString::fromLatin1(value));
+    }
+
     // ===== parseHeaders + findHeader ====================================
     {
         const QByteArray block = "GET / HTTP/1.1\r\nHost: a.com\r\nX-Token: abc\r\nContent-Length: 5";
