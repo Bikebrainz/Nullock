@@ -26,8 +26,8 @@ developer-facing record.
   including the `nosniff` gate. Add native, public-API and pinned-browser coverage.
 
 ### TLS certificate compatibility
-- Validate cached leaf signatures against the current CA and verify the private
-  key matches the certificate before reuse. Replace damaged keys, invalid
+- Validate cached leaf signatures against the current CA, require the requested
+  DNS/IP subject alternative name, and verify the private key matches before reuse. Replace damaged keys, invalid
   signatures and leaves signed by a previous CA after restart, while retaining
   valid cached certificates.
 - Include subject and authority key identifiers in generated proxy certificates

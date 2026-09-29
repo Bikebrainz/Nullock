@@ -4007,12 +4007,12 @@
       "impact": "medium",
       "effort": "hours",
       "gap": "Persisted leaves are checked against the current CA and private key after restart. Cache eviction, a clear-leaves control, live CA replacement, and automatic CA/key repair remain unavailable.",
-      "why": "Disk-cache reuse verifies parsing, subject, dates, authority key identifier, server-certificate trust against the current CA, and the private key public component. Stale, damaged or mismatched files are regenerated; valid files are reused and private-key permissions are reapplied.",
-      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp cachedLeafMatchesCaAndKey and leafCertFor; scripts/runtime_regression.py strict HTTPS after restart for valid reuse, legacy leaves, mismatched/damaged keys, invalid signatures and replaced CA.",
+      "why": "Disk-cache reuse verifies parsing, common name, the requested DNS/IP subject alternative name, dates, authority key identifier, server-certificate trust against the current CA, and the private key public component. Stale, damaged or mismatched files are regenerated; valid files are reused and private-key permissions are reapplied.",
+      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp cachedLeafMatchesCaAndKey and leafCertFor; scripts/runtime_regression.py strict HTTPS after restart for valid reuse, legacy leaves, mismatched/damaged keys, invalid signatures, wrong/missing subject alternative names and replaced CA.",
       "reconciled": {
         "date": "2026-09-29",
-        "commit": "a6d8c913",
-        "note": "Validate persisted certificate signatures using only the current CA as a trust anchor and compare the private key public component. Real HTTPS regressions reproduce the old mismatch and cover replacement plus valid reuse."
+        "commit": "4c44d3c0",
+        "note": "Verify the current CA, private key and requested DNS/IP subject alternative name before disk-cache reuse. Strict HTTPS regressions cover wrong and missing SANs; focused checks retain valid DNS, IPv4 and IPv6 leaves."
       }
     },
     {
