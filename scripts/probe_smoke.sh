@@ -818,6 +818,11 @@ def make(mode):
                     for value in types: self.send_header('Content-Type', value)
                     self.send_header('Content-Length', str(len(body))); self.end_headers()
                     self.wfile.write(body); return
+                if mode == 'xss-context':
+                    prefix = {'/iframe': '<iframe>', '/custom': '<script-custom>',
+                              '/colon': '<style:custom>', '/comment': '<!-->',
+                              '/comment-dash': '<!--->'}.get(urlparse(self.path).path, '<div>')
+                    self._send(200, (prefix + val).encode()); return
                 if mode == 'xss-attr':
                     # Reflect the marker RAW but into a later attribute, after an
                     # earlier quoted attribute value that contains a literal '>'.
@@ -1076,7 +1081,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie hh-host-loc hh-urlattr
        sqli-vuln sqli-safe sqli-blind sqli-waf
        xss-vuln xss-safe xss-attr xss-nosniff xss-nosniff-invalid xss-nosniff-combined xss-nosniff-repeated
-       xss-media
+       xss-media xss-context
        crlf-vuln crlf-colonless crlf-safe
        crlf-post-vuln crlf-post-safe crlf-hdr-vuln crlf-hdr-safe
        method-allow method-trace method-trace-fp method-405 method-track
@@ -1202,6 +1207,11 @@ for variant in parameter suffix xhtml-lookalike last-plain combined-plain quoted
 done
 for variant in last-html unknown html; do
   chk "xss effective HTML media type remains executable ($variant)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-media]} "$variant?q=test")\"}")" "d.get('ok') and d.get('vulnerable')"
+done
+
+chk "xss iframe fallback text is inert" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-context]} 'iframe?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+for variant in custom colon comment comment-dash; do
+  chk "xss ordinary element content is detected ($variant)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-context]} "$variant?q=test")\"}")" "d.get('ok') and d.get('vulnerable')"
 done
 
 echo "== HTTP method audit =="

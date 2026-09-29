@@ -53,6 +53,12 @@ bool runs(const char *b) {
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
+    if (app.arguments().size() == 3 && app.arguments().at(1) == "--html-context") {
+        const QString body = QJsonDocument::fromJson(app.arguments().at(2).toUtf8()).array().first().toString();
+        const int at = body.indexOf(TAG, 0, Qt::CaseInsensitive);
+        std::puts(at >= 0 && inExecutingHtmlContext(body, at) ? "true" : "false");
+        return 0;
+    }
     if (app.arguments().size() == 3 && app.arguments().at(1) == "--can-execute-html") {
         QList<QPair<QString, QString>> headers;
         for (const auto &v : QJsonDocument::fromJson(app.arguments().at(2).toUtf8()).array()) {
@@ -208,6 +214,27 @@ int main(int argc, char **argv) {
             chk(label.constData(), isHtmlContentType(test.values.first()) == test.html);
         headers.append(qMakePair(QStringLiteral("X-Content-Type-Options"), QStringLiteral("nosniff")));
         chk(label.constData(), canExecuteHtml(headers) == (test.html && !test.sniffed));
+    }
+
+    // Raw-text behavior belongs to exact HTML tag names. Punctuation and
+    // non-ASCII bytes are part of a name, not implicit attribute separators.
+    const QStringList rawNames = {"script", "style", "textarea", "title", "xmp",
+                                  "noscript", "noframes", "noembed", "plaintext", "iframe"};
+    const QStringList suffixes = {"", "-", "-custom", ":x", "_x", ".",
+                                  QString(QChar(0xa0)), QString(QChar(0))};
+    for (const auto &name : rawNames) {
+        for (const auto &suffix : suffixes) {
+            const QString body = "<" + name + suffix + ">" + TAG;
+            const auto label = ("raw-text tag boundary: " + name + suffix).toUtf8();
+            chk(label.constData(), inExecutingHtmlContext(body, body.indexOf(TAG)) == !suffix.isEmpty());
+        }
+        const QString body = "<" + name + ">inert</" + name + ">" + TAG;
+        chk("raw-text closing tag restores element content except plaintext",
+            inExecutingHtmlContext(body, body.indexOf(TAG)) == (name != "plaintext"));
+    }
+    for (const auto &prefix : {"<!-->", "<!--->", "<!-- normal -->", "<!-- normal --!>", "<!bogus>"}) {
+        const QString body = QString::fromLatin1(prefix) + TAG;
+        chk("closed comment restores element content", inExecutingHtmlContext(body, body.indexOf(TAG)));
     }
 
     // ===== queryWith: preserve others, replace target, percent-encode =====
