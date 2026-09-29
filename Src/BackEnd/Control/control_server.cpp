@@ -3740,12 +3740,16 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson();
     }
     if (path == "/api/repeater/send") {
-        if (m_wiring.repeater && blocksScope(m_wiring.repeater->host()))
+        if (!m_wiring.repeater)
+            return httpJson(503, {{"ok", false}, {"error", "Repeater is unavailable"}});
+        if (m_wiring.repeater->busy())
+            return httpJson(409, {{"ok", false}, {"error", "A Repeater request is already running"}});
+        if (m_wiring.repeater->host().trimmed().isEmpty() || m_wiring.repeater->requestText().isEmpty())
+            return httpJson(400, {{"ok", false}, {"error", "Repeater requires a target host and request"}});
+        if (blocksScope(m_wiring.repeater->host()))
             return okJson({{ "ok", false }, { "scopeBlocked", true },
                 { "error", "repeater target '" + m_wiring.repeater->host() + "' is out of scope" }});
-        if (m_wiring.repeater && m_wiring.repeater->busy())
-            return httpJson(409, {{"ok", false}, {"error", "A Repeater request is already running"}});
-        if (m_wiring.repeater) m_wiring.repeater->sendAsync();
+        m_wiring.repeater->sendAsync();
         return okJson();
     }
     if (path == "/api/repeater/clear") {

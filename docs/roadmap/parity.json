@@ -4863,12 +4863,12 @@
       "impact": "low",
       "effort": "hours",
       "gap": "The CLI requires Bash, curl and jq, plus base64 for file/stdin loading; a native Windows CLI remains unimplemented. Send waits for a bounded period and reports unfinished requests explicitly. Stop completes after the current response rather than aborting the socket.",
-      "why": "History loads use stable IDs, asynchronous sends survive multiple busy polls, and binary file/stdin bodies retain their bytes. Tab summaries read an explicit per-tab response flag; fresh or duplicated tabs no longer claim a response. Duplicating a request clears its response metadata.",
+      "why": "History loads use stable IDs, asynchronous sends survive multiple busy polls, and binary file/stdin bodies retain their bytes. Tab summaries read an explicit per-tab response flag; fresh or duplicated tabs no longer claim a response. Duplicating a request clears its response metadata. Empty drafts and blank hosts are rejected before accepting a send, so a no-op cannot return an old response as a successful request.",
       "evidence": "bin/nullock cmd_repeater; Src/BackEnd/Control/control_server.cpp snapshot hasResponse and requestBase64; Src/Core/Networking/repeater.cpp duplicateTab; scripts/repeater_cli_test.py and scripts/repeater_cli_runtime.py.",
       "reconciled": {
         "date": "2026-09-29",
-        "commit": "f5dcae31",
-        "note": "Verified the CLI through owned API fixtures and a real app: history IDs, asynchronous sends, Stop, binary file/stdin input and tab response state. Replaced stale defect descriptions and removed an unverified exceeds comparison."
+        "commit": "99bfaf7f",
+        "note": "Verified the CLI through owned API fixtures and a real app: history IDs, asynchronous sends, Stop, binary file/stdin input and tab response state. Replaced stale defect descriptions and removed an unverified exceeds comparison. Empty requests and blank targets now fail explicitly; real-app CLI regressions cover both."
       },
       "audited_state": "exceeds"
     },
