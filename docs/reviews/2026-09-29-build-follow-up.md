@@ -123,6 +123,8 @@ key permissions and test both OpenSSL and LibreSSL certificate generation.
   their implementations differ.
 - [ ] Require a runnable regression or a precise source reference for each
   reconciliation; retain limitations instead of inferring full parity.
+- [ ] When publishing a release, update draft/latest labels and public dates
+  against the GitHub release metadata as part of the same release checklist.
 
 This pass corrects the obsolete Repeater scope-bypass claim: the shared
 `HttpClient` checks outbound scope before connecting, including redirects, and
