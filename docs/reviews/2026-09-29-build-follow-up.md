@@ -160,8 +160,8 @@ key permissions and test both OpenSSL and LibreSSL certificate generation.
 This pass corrects the obsolete Repeater scope-bypass claim: the shared
 `HttpClient` checks outbound scope before connecting, including redirects, and
 the API snapshots the request synchronously before scheduling its worker.
-The 41-check outbound-scope regression passes. The native window's remaining
-blocking Send behavior is a separate issue described above.
+The 41-check outbound-scope regression passes. Native Send now uses the same
+background worker; interrupting a stalled socket remains open as described above.
 
 ## Verification to carry forward
 
