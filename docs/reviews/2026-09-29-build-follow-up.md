@@ -84,16 +84,21 @@ and proof of arbitrary script execution remain outside this marker check.
 
 ### 3. Finish Repeater cancellation and native-window responsiveness
 
-- [ ] Route the native QML Send button through the asynchronous send path and
+- [x] Route the native QML Send button through the asynchronous send path and
   expose the same Stop state as the browser.
 - [ ] Add cancellation to the socket-owning worker during connection, TLS,
   header and body waits.
 - [ ] Keep concurrent sends from separate tabs as a separate design task.
 
-**Evidence:** browser/API/CLI sends use `sendAsync`, but `Src/App/app.qml` still
-calls `repeater.send()` directly. Current Stop sets an atomic flag checked
-between responses and redirects; it does not interrupt a stalled socket.
-`HttpClient` uses per-wait timeouts and a five-minute total read budget.
+**Completed September 30:** [c94f5388](https://github.com/Bikebrainz/Nullock/commit/c94f5388)
+routes native Send through `sendAsync`, exposes Stop/pending state, disables
+Send/Clear during work and copies the visible host/port before sending. A QML
+harness executes the actual controls with a test backend; the real application
+passes 64 native-window runtime checks and 20 control responsiveness checks.
+
+**Remaining evidence:** Stop sets an atomic flag checked between responses and
+redirects; it does not interrupt a stalled socket. `HttpClient` uses per-wait
+timeouts and a five-minute total read budget.
 
 **Done when:** a controlled stalled connection, TLS handshake, header, fixed body
 and chunked body can each be stopped promptly without cross-thread socket use.

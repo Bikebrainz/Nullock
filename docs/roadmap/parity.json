@@ -4846,7 +4846,7 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Shared outbound scope checks protect the actual destination, port, protocol and path before each HttpClient connection, including redirects. The former API-only bypass and queued-tab-switch descriptions are obsolete. Native QML sends still block the UI; that separate responsiveness gap is tracked under cancellation.",
+      "gap": "Shared outbound scope checks protect the actual destination, port, protocol and path before each HttpClient connection, including redirects. The former API-only bypass and queued-tab-switch descriptions are obsolete.",
       "why": "HttpClient::send checks OutboundScope before connecting, so direct Repeater::send calls also use the registered project policy. The API performs its early host check and synchronously copies the active request into sendAsync before scheduling the worker. Live regressions verify path, port, scheme, redirects and dynamic scope edits.",
       "evidence": "Src/Core/Networking/networking.cpp HttpClient::send; Src/Core/Networking/outbound_scope.cpp; Src/App/app.cpp OutboundScope::Registration; Src/BackEnd/Control/control_server.cpp /api/repeater/send; Src/Core/Networking/repeater.cpp sendAsync; scripts/outbound_scope_regression.py (41 checks).",
       "reconciled": {
@@ -5460,13 +5460,13 @@
       "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "Browser/API/CLI sends run on a worker and remain responsive. Native QML still calls synchronous send directly. Stop marks cancellation and prevents later redirects after the current response; it does not immediately abort a stalled socket. One asynchronous request can run at a time across all tabs.",
-      "why": "sendAsync copies the request into a worker and applies the result without replacing newer edits. Browser/API Stop and CLI stop share the cancellation flag. Live API/browser regressions cover those paths; Src/App/app.qml uses repeater.send() and has no Stop affordance.",
-      "evidence": "Src/Core/Networking/repeater.cpp sendAsync/cancel; ui-v2/tabs.jsx Repeater Stop; bin/nullock repeater stop; scripts/control_responsiveness_regression.py; Tests/ui/repeater_responsiveness_browser_test.cjs; scripts/repeater_cli_test.py. Src/App/app.qml native Repeater Send handler.",
+      "gap": "Browser, native-window, API and CLI sends run on the same worker. Stop marks cancellation and prevents later redirects after the current response or transport timeout; it does not immediately abort a stalled socket. One asynchronous request can run at a time across all tabs.",
+      "why": "sendAsync copies the request into a worker and applies results without replacing newer edits. Native QML now calls this path, shows Stop/pending state and disables Send/Clear while busy. The visible host/port are committed before sending, with blank-host and port-range validation.",
+      "evidence": "Src/Core/Networking/repeater.hpp cancelling Q_PROPERTY; Src/Core/Networking/repeater.cpp sendAsync/cancel; Src/App/app.qml native controls; scripts/native_repeater_controls_test.py executes production QML controls; scripts/runtime_regression.py --gui (64 checks); scripts/control_responsiveness_regression.py (20 checks); Tests/ui/repeater_responsiveness_browser_test.cjs.",
       "reconciled": {
-        "date": "2026-09-29",
-        "commit": "c2af0a33",
-        "note": "Reconciled browser/API/CLI asynchronous sends and Stop, while recording the native QML synchronous-send path separately. Immediate socket cancellation and concurrent sends remain incomplete; grade stays partial."
+        "date": "2026-09-30",
+        "commit": "c94f5388",
+        "note": "Native-window Send joins the asynchronous path and exposes Stop/pending state. Production QML controls and real application runtime checks pass. Immediate socket cancellation and concurrent sends remain incomplete; grade stays partial."
       }
     },
     {

@@ -10,6 +10,14 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Native Repeater responsiveness
+- Run native-window sends on the existing background worker. Show Send/Stop
+  progress and disable Send/Clear while the request is active.
+- Copy the visible target fields before sending, reject blank hosts and ports
+  outside 1–65535, and expose the pending cancellation state to QML.
+- Stop prevents further redirects after the current response or transport
+  timeout. Immediate socket cancellation and simultaneous sends remain open work.
+
 ### Reflected HTML context handling
 - Keep HTML template contents inert, including nested templates and apparent
   closing tags inside raw text, comments or attributes.
