@@ -10,6 +10,8 @@
 #include "xss_reflected.hpp"
 #include "response_header_values.hpp"
 
+#include <QHash>
+#include <QRegularExpression>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -73,120 +75,227 @@ bool canExecuteHtml(const QList<QPair<QString, QString>> &headers) {
     return isHtmlMediaType(type);
 }
 
-// Would "<marker>" at offset `at` be parsed as a start tag -- i.e. it's in
-// normal element content, NOT inside a comment, a raw-text element, or an open
-// tag's attributes? Only that position is exploitable; the rest reflect the
-// brackets inertly. A reduced HTML5 tokenizer over body[0..at):
-//   - tracks attribute QUOTING so only an UNQUOTED '>' ends a tag (a '>' inside
-//     a quoted attribute value must NOT re-enter element content);
-//   - treats script/style/textarea/title/xmp/noscript/noframes/noembed/iframe as
-//     raw-text (a marker inside them is inert), and plaintext as irreversible
-//     raw-text that never closes;
-//   - closes a raw-text element on "</name" followed by a delimiter (not an
-//     exact "</name>"), and closes a comment on "-->" or the bogus "--!>".
-bool inExecutingHtmlContext(const QString &body, int at) {
-    static const QStringList rawText = {
-        "script", "style", "textarea", "title", "xmp", "noscript",
-        "noframes", "noembed", "iframe", "plaintext" };
-    auto isDelim = [](QChar c) {
-        return c == '>' || c == '/' || c == ' ' || c == '\t'
-            || c == '\n' || c == '\f' || c == '\r';
-    };
-    // HTML5 tag-open / end-tag-open: a tag name starts with an ASCII letter ONLY.
-    // QChar::isLetter() is Unicode-aware (Cyrillic/Greek/CJK/accented letters all
-    // return true), so a '<' + a NON-ASCII letter would wrongly open a phantom tag
-    // and swallow a following reflected <marker> -- the same false negative already
-    // fixed for '<'+space/digit/'=', just missed for non-ASCII letters.
-    auto isAsciiAlpha = [](QChar c) {
-        return (c >= QLatin1Char('a') && c <= QLatin1Char('z'))
-            || (c >= QLatin1Char('A') && c <= QLatin1Char('Z'));
-    };
-    QString openRaw;       // current raw-text element name, or empty
-    bool inComment = false;
-    bool inTag = false;    // between '<' and its (unquoted) '>'
-    QChar quote = QChar(0); // active attribute-value quote inside a tag, or 0
-    const int n = qMin(at, body.size());
-    for (int i = 0; i < n; ++i) {
-        if (inComment) {
-            if (body.mid(i, 3) == QLatin1String("-->")) { inComment = false; i += 2; }
-            else if (body.mid(i, 4) == QLatin1String("--!>")) { inComment = false; i += 3; }
+namespace {
+bool htmlSpace(QChar c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r';
+}
+bool tagDelimiter(QChar c) { return htmlSpace(c) || c == '/' || c == '>'; }
+bool asciiLetter(QChar c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+QString asciiLower(QString text) {
+    for (QChar &c : text)
+        if (c >= 'A' && c <= 'Z') c = QChar(c.unicode() + ('a' - 'A'));
+    return text;
+}
+
+struct ContextTag {
+    QString name;
+    QHash<QString, QString> attributes;
+    bool closing = false;
+    bool selfClosing = false;
+    int end = -1;
+};
+
+// Only a complete token before the reflection changes context. Quotes open a
+// quoted attribute value after '=', not in an unquoted value or an attribute name.
+ContextTag contextTag(const QString &body, int start, int limit) {
+    ContextTag tag;
+    int i = start + 1;
+    if (i < limit && body[i] == '/') { tag.closing = true; ++i; }
+    if (i >= limit || !asciiLetter(body[i])) return tag;
+    const int nameStart = i;
+    while (i < limit && !tagDelimiter(body[i])) ++i;
+    tag.name = asciiLower(body.mid(nameStart, i - nameStart));
+    while (i < limit) {
+        while (i < limit && htmlSpace(body[i])) ++i;
+        if (i >= limit) break;
+        if (body[i] == '>') { tag.end = i; return tag; }
+        if (body[i] == '/') {
+            if (++i < limit && body[i] == '>') {
+                tag.selfClosing = true; tag.end = i; return tag;
+            }
             continue;
         }
+        const int attrStart = i++;
+        while (i < limit && !tagDelimiter(body[i]) && body[i] != '=') ++i;
+        const QString name = asciiLower(body.mid(attrStart, i - attrStart));
+        while (i < limit && htmlSpace(body[i])) ++i;
+        QString value;
+        if (i < limit && body[i] == '=') {
+            ++i;
+            while (i < limit && htmlSpace(body[i])) ++i;
+            if (i >= limit) break;
+            const QChar quote = body[i];
+            const bool quoted = quote == '"' || quote == '\'';
+            if (quoted) ++i;
+            const int valueStart = i;
+            while (i < limit && (quoted ? body[i] != quote : !htmlSpace(body[i]) && body[i] != '>')) ++i;
+            value = body.mid(valueStart, i - valueStart);
+            if (quoted) {
+                if (i >= limit) break;
+                ++i;
+            }
+        }
+        if (!tag.attributes.contains(name)) tag.attributes.insert(name, value);
+    }
+    return tag;
+}
+
+bool htmlAnnotationEncoding(const QString &value) {
+    // The named character references in the accepted ASCII MIME types are
+    // &sol; and &plus;. Numeric references can encode any of their characters. Decode once.
+    static const QRegularExpression references("&(?:#([0-9]+);?|#[xX]([0-9a-fA-F]+);?|sol;|plus;)");
+    QString decoded;
+    qsizetype copied = 0;
+    auto matches = references.globalMatch(value);
+    while (matches.hasNext()) {
+        const auto match = matches.next();
+        decoded += value.mid(copied, match.capturedStart() - copied);
+        bool ok = false;
+        const uint code = match.captured(0) == "&plus;" ? uint('+')
+            : match.captured(0) == "&sol;" ? uint('/')
+            : !match.captured(1).isEmpty() ? match.captured(1).toUInt(&ok, 10)
+                                          : match.captured(2).toUInt(&ok, 16);
+        decoded += QChar((ok || code == '/' || code == '+') && code > 0 && code < 128 ? ushort(code) : ushort(0xfffd));
+        copied = match.capturedEnd();
+    }
+    decoded += value.mid(copied);
+    decoded = asciiLower(decoded);
+    return decoded == "text/html" || decoded == "application/xhtml+xml";
+}
+
+enum class HtmlNamespace { Html, Svg, Math };
+struct ContextElement {
+    QString name;
+    HtmlNamespace space = HtmlNamespace::Html;
+    bool integration = false;
+};
+} // namespace
+
+// A reduced context parser for the probe's reflected tag. Namespace transitions
+// follow HTML's foreign-content rules; HTML templates keep their contents inert.
+// This does not implement a full tree builder or prove arbitrary script execution.
+// https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inforeign
+bool inExecutingHtmlContext(const QString &body, int at) {
+    static const QStringList rawText = {"script", "style", "textarea", "title", "xmp",
+        "noscript", "noframes", "noembed", "iframe", "plaintext"};
+    static const QStringList voidElements = {"area", "base", "basefont", "bgsound", "br", "col",
+        "embed", "frame", "hr", "img", "input", "keygen", "link", "meta", "param", "source", "track", "wbr"};
+    static const QStringList foreignBreakouts = {"b", "big", "blockquote", "body", "br", "center",
+        "code", "dd", "div", "dl", "dt", "em", "embed", "h1", "h2", "h3", "h4", "h5", "h6",
+        "head", "hr", "i", "img", "li", "listing", "menu", "meta", "nobr", "ol", "p", "pre",
+        "ruby", "s", "small", "span", "strong", "strike", "sub", "sup", "table", "tt", "u", "ul", "var"};
+    static const QStringList mathText = {"mi", "mo", "mn", "ms", "mtext"};
+    QList<ContextElement> elements;
+    QString openRaw;
+    int scriptEscape = 0; // 0 = data, 1 = escaped, 2 = double escaped
+    int templates = 0;
+    const int limit = qMin(at, body.size());
+    if (at < 0) return false;
+    auto popTo = [&](int index) {
+        while (elements.size() > index) {
+            const auto element = elements.takeLast();
+            if (element.space == HtmlNamespace::Html && element.name == "template") --templates;
+        }
+    };
+    auto starts = [&](int i, const QString &text) {
+        return asciiLower(body.mid(i, text.size())) == text;
+    };
+    for (int i = 0; i < limit; ++i) {
         if (!openRaw.isEmpty()) {
-            // plaintext is irreversible: nothing after it re-enters markup.
-            if (openRaw == QLatin1String("plaintext")) continue;
-            const QString close = "</" + openRaw;
-            if (body.mid(i, close.size()).compare(close, Qt::CaseInsensitive) == 0) {
-                const QChar d = (i + close.size() < body.size())
-                                ? body[i + close.size()] : QChar('>');
-                if (isDelim(d)) {
-                    i += close.size() - 1;   // resume at the delimiter
-                    openRaw.clear();
-                    inTag = false;
+            if (openRaw == "plaintext") return false;
+            if (openRaw == "script") {
+                if (scriptEscape == 0 && body.mid(i, 4) == "<!--") { scriptEscape = 1; i += 3; continue; }
+                if (scriptEscape && body.mid(i, 3) == "-->") { scriptEscape = 0; i += 2; continue; }
+                if (scriptEscape == 1 && starts(i, "<script") && i + 7 < body.size()
+                    && tagDelimiter(body[i + 7])) { scriptEscape = 2; i += 6; continue; }
+                if (scriptEscape == 2) {
+                    if (starts(i, "</script") && i + 8 < body.size() && tagDelimiter(body[i + 8])) {
+                        scriptEscape = 1; i += 7;
+                    }
+                    continue;
                 }
             }
+            const QString close = "</" + openRaw;
+            if (!starts(i, close) || i + close.size() >= body.size()
+                || !tagDelimiter(body[i + close.size()])) continue;
+            const auto tag = contextTag(body, i, limit);
+            if (tag.end < 0) return false;
+            i = tag.end;
+            if (!elements.isEmpty()) popTo(elements.size() - 1);
+            openRaw.clear(); scriptEscape = 0;
             continue;
         }
-        const QChar ch = body[i];
-        if (inTag) {
-            if (quote != QChar(0)) {
-                if (ch == quote) quote = QChar(0);
-            } else if (ch == '"' || ch == '\'') {
-                quote = ch;
-            } else if (ch == '>') {
-                inTag = false;
+        if (body[i] != '<') continue;
+        if (body.mid(i, 4) == "<!--") {
+            if (body.mid(i, 5) == "<!-->") { i += 4; continue; }
+            if (body.mid(i, 6) == "<!--->") { i += 5; continue; }
+            int end = body.indexOf("-->", i + 4), width = 3;
+            const int abrupt = body.indexOf("--!>", i + 4);
+            if (abrupt >= 0 && (end < 0 || abrupt < end)) { end = abrupt; width = 4; }
+            if (end < 0 || end + width > limit) return false;
+            i = end + width - 1;
+            continue;
+        }
+        const bool foreign = !elements.isEmpty() && elements.last().space != HtmlNamespace::Html;
+        if (foreign && !elements.last().integration && body.mid(i, 9) == "<![CDATA[") {
+            const int end = body.indexOf("]]>", i + 9);
+            if (end < 0 || end + 3 > limit) return false;
+            i = end + 2; continue;
+        }
+        if (i + 1 < body.size() && (body[i + 1] == '!' || body[i + 1] == '?')) {
+            const int end = body.indexOf('>', i + 2);
+            if (end < 0 || end >= limit) return false;
+            i = end; continue;
+        }
+        // Invalid end-tag openings become bogus comments, not literal '<' text.
+        if (i + 2 < body.size() && body[i + 1] == '/' && !asciiLetter(body[i + 2])) {
+            const int end = body.indexOf('>', i + 2);
+            if (end < 0 || end >= limit) return false;
+            i = end; continue;
+        }
+        const auto tag = contextTag(body, i, limit);
+        if (tag.name.isEmpty()) continue;
+        if (tag.end < 0) return false;
+        i = tag.end;
+        bool html = !foreign || (!tag.closing && elements.last().integration
+            && !(elements.last().space == HtmlNamespace::Math && mathText.contains(elements.last().name)
+                 && (tag.name == "mglyph" || tag.name == "malignmark")));
+        if (foreign && !tag.closing && elements.last().space == HtmlNamespace::Math
+            && elements.last().name == "annotation-xml" && tag.name == "svg") html = true;
+        const bool breakout = tag.closing ? tag.name == "br" || tag.name == "p"
+            : foreignBreakouts.contains(tag.name) || (tag.name == "font"
+                && (tag.attributes.contains("color") || tag.attributes.contains("face") || tag.attributes.contains("size")));
+        if (!html && breakout) {
+            while (!elements.isEmpty() && elements.last().space != HtmlNamespace::Html && !elements.last().integration)
+                popTo(elements.size() - 1);
+            html = true;
+        }
+        if (tag.closing) {
+            for (int j = elements.size() - 1; j >= 0; --j) {
+                if (elements[j].name == tag.name) { popTo(j); break; }
+                // Unrelated end tags cannot cross a template's content boundary.
+                if (elements[j].space == HtmlNamespace::Html && elements[j].name == "template") break;
             }
             continue;
         }
-        // element content
-        if (ch == '<') {
-            if (body.mid(i, 4) == QLatin1String("<!--")) {
-                // HTML's comment-start states also accept these abrupt closes.
-                if (body.mid(i, 5) == QLatin1String("<!-->")) { i += 4; continue; }
-                if (body.mid(i, 6) == QLatin1String("<!--->")) { i += 5; continue; }
-                inComment = true; i += 3; continue;
-            }
-            // Markup declaration ("<!...", e.g. <!DOCTYPE>, <![CDATA[...>, a bogus
-            // "<!x=\">") or a PI-like "<?...": HTML tokenizes ALL of these as a
-            // BOGUS COMMENT -- consume to the very next '>' with NO attribute
-            // quote-tracking. Routing them through the tag branch lets a '"'
-            // inside open a fake quoted value that swallows the terminating '>'
-            // and hides a following <script> (a false negative). A '>' ends the
-            // construct even inside a quoted DOCTYPE identifier (spec: the
-            // abrupt-identifier parse error still emits the token there).
-            if (i + 1 < body.size() && (body[i + 1] == '!' || body[i + 1] == '?')) {
-                const int gt = body.indexOf('>', i + 1);
-                if (gt < 0 || gt >= n) { inComment = true; break; }  // reaches past `at` -> at is inert
-                i = gt;                                              // loop's ++i steps past '>'
-                continue;
-            }
-            int j = i + 1;
-            const bool closing = (j < body.size() && body[j] == '/');
-            if (closing) ++j;
-            // A tag name MUST start with an ASCII letter (HTML5 tag-open / end-tag-
-            // open state). A '<' followed by a space, digit, '=', '<', etc. is a
-            // parse error: the '<' is literal character DATA and the next char is
-            // reconsumed in the data state. Opening a phantom tag here swallowed a
-            // following reflected <marker> -- a false negative on bodies like
-            // "1 < 2 <marker>" or "i <3 you <marker>".
-            if (j >= body.size() || !isAsciiAlpha(body[j])) continue;
-            QString nameStr;
-            // Tag names end at HTML delimiters, not at punctuation or Unicode.
-            // <script-custom> and <script:custom> are ordinary elements, not
-            // a <script> opening followed by attributes.
-            while (j < body.size() && !isDelim(body[j])) {
-                QChar c = body[j++];
-                if (c >= 'A' && c <= 'Z') c = QChar(c.unicode() + ('a' - 'A'));
-                nameStr += c;
-            }
-            if (!closing && rawText.contains(nameStr)) openRaw = nameStr;
-            inTag = true;
-            quote = QChar(0);
+        HtmlNamespace space = html ? HtmlNamespace::Html : elements.last().space;
+        if (html && tag.name == "svg") space = HtmlNamespace::Svg;
+        if (html && tag.name == "math") space = HtmlNamespace::Math;
+        const bool integration = (space == HtmlNamespace::Svg
+                && (tag.name == "title" || tag.name == "desc" || tag.name == "foreignobject"))
+            || (space == HtmlNamespace::Math && (mathText.contains(tag.name)
+                || (tag.name == "annotation-xml" && htmlAnnotationEncoding(tag.attributes.value("encoding")))));
+        if (space != HtmlNamespace::Html && tag.selfClosing) continue;
+        if (space == HtmlNamespace::Html && voidElements.contains(tag.name)) continue;
+        elements.append({tag.name, space, integration});
+        if (space == HtmlNamespace::Html) {
+            if (tag.name == "template") ++templates;
+            if (rawText.contains(tag.name)) { openRaw = tag.name; scriptEscape = 0; }
         }
-        // a stray '>' in element content is inert text -- ignore.
     }
-    return !inComment && openRaw.isEmpty() && !inTag;
+    return openRaw.isEmpty() && templates == 0;
 }
+
 
 QByteArray buildRequest(const Request &req, const QString &query) {
     // Self-protect the request line + Host against CR/LF regardless of caller:

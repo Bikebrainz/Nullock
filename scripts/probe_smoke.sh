@@ -819,9 +819,21 @@ def make(mode):
                     self.send_header('Content-Length', str(len(body))); self.end_headers()
                     self.wfile.write(body); return
                 if mode == 'xss-context':
+                    if urlparse(self.path).path == '/template-then-active':
+                        self._send(200, ('<template>' + val + '</template>' + val).encode()); return
                     prefix = {'/iframe': '<iframe>', '/custom': '<script-custom>',
                               '/colon': '<style:custom>', '/comment': '<!-->',
-                              '/comment-dash': '<!--->'}.get(urlparse(self.path).path, '<div>')
+                              '/comment-dash': '<!--->', '/template': '<template>',
+                              '/template-nested': '<template><template></template>',
+                              '/template-raw': '<template><script></template></script>',
+                              '/template-closed': '<template><svg><title></template>',
+                              '/svg-title': '<svg><title>', '/svg-style': '<svg><style>',
+                              '/svg-template': '<svg><template>', '/svg-cdata': '<svg><![CDATA[>',
+                              '/svg-integration-cdata': '<svg><title><![CDATA[>',
+                              '/script-double': '<script><!--<script></script>',
+                              '/math-html': '<math><annotation-xml encoding="text/html"><title>',
+                              '/math-glyph': '<math><mi><mglyph><title>'
+                              }.get(urlparse(self.path).path, '<div>')
                     self._send(200, (prefix + val).encode()); return
                 if mode == 'xss-attr':
                     # Reflect the marker RAW but into a later attribute, after an
@@ -1210,7 +1222,10 @@ for variant in last-html unknown html; do
 done
 
 chk "xss iframe fallback text is inert" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-context]} 'iframe?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
-for variant in custom colon comment comment-dash; do
+for variant in template template-nested template-raw svg-cdata script-double math-html; do
+  chk "xss inactive reflected context is rejected ($variant)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-context]} "$variant?q=test")\"}")" "d.get('ok') and not d.get('vulnerable')"
+done
+for variant in custom colon comment comment-dash svg-title svg-style svg-template template-closed math-glyph svg-integration-cdata template-then-active; do
   chk "xss ordinary element content is detected ($variant)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-context]} "$variant?q=test")\"}")" "d.get('ok') and d.get('vulnerable')"
 done
 

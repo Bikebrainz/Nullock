@@ -2,12 +2,11 @@
 
 // Reflected cross-site scripting (CWE-79). User input echoed into a response
 // without context-correct encoding lets an attacker inject markup that runs in
-// the victim's session. We confirm it conservatively: inject a random-marker
-// tag and flag ONLY when (a) the response is HTML, (b) the angle brackets come
-// back UNENCODED, and (c) the reflection sits in executable element content --
-// not inside a comment, a raw-text element (script/style/textarea/...), or an
-// attribute value, where the brackets are inert. An entity-encoded reflection
-// (&lt;…&gt;) or a JSON/text response never matches, so findings are real.
+// the victim's session. This probe injects a random-marker tag and checks that
+// the response can render HTML, the brackets return unencoded, and the marker
+// is outside comments, raw text, attributes and inert template contents.
+// It detects element-content injection with a reduced HTML parser; it does not
+// prove arbitrary script execution or model every browser tree-building rule.
 // Scope: element-content injection; quote-only attribute breakout (where '<'
 // is encoded but the delimiter quote isn't), DOM-based, and stored XSS are out
 // of scope for this reflected check.
@@ -21,7 +20,7 @@ namespace Nullock::Core::XssReflected {
 
 struct Hit {
     QString param;       // parameter the payload went into
-    QString context;     // "html" (executable element content)
+    QString context;     // "html" (element-content injection)
     QString payload;     // the injected value (decoded)
     QString evidence;    // the raw reflected marker found
 };
@@ -55,7 +54,7 @@ QStringList defaultParams();
 
 // Exposed for tests (pure logic; live in xss_logic.cpp):
 //   isHtmlContentType  -- can the effective Content-Type render/sniff HTML?
-//   inExecutingHtmlContext -- is the marker at `at` in runnable element content?
+//   inExecutingHtmlContext -- is the marker at `at` in active element content?
 //   buildRequest -- render the GET, stripping CR/LF from method/host/path/query
 //                   and dropping any CR/LF-bearing carried header.
 //   queryWith -- set `param` to `value` (percent-encoded), preserving others.

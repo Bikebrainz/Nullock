@@ -237,6 +237,51 @@ int main(int argc, char **argv) {
         chk("closed comment restores element content", inExecutingHtmlContext(body, body.indexOf(TAG)));
     }
 
+    // These outcomes are also checked against Chromium in the browser corpus.
+    const struct { const char *prefix; bool element; } contexts[] = {
+        {"<template>", false}, {"<template/>", false},
+        {"<template><template></template>", false},
+        {"<template><div></template>", true},
+        {"<template><table></template>", true},
+        {"<template><svg><title></template>", true},
+        {"<template><script></template></script>", false},
+        {"<template><textarea></template></textarea>", false},
+        {"<template><!-- </template> -->", false},
+        {"<template><div title=\"</template>\">", false},
+        {"<svg><title>", true}, {"<svg><style>", true},
+        {"<svg><script>", true}, {"<svg><textarea>", true},
+        {"<svg><title><style>", false},
+        {"<svg><foreignObject><template>", false},
+        {"<svg><template>", true},
+        {"<svg><title/ >", true}, {"<svg><title a=/>", true},
+        {"<svg><g><div><title>", false},
+        {"<svg><font color=red><title>", false},
+        {"<svg><font><title>", true},
+        {"<math><mi><title>", false},
+        {"<math><mi><mglyph><title>", true},
+        {"<math><mi><malignmark><title>", true},
+        {"<math><annotation-xml encoding=\"text/html\"><title>", false},
+        {"<math><annotation-xml encoding=\"text&#47;html\"><title>", false},
+        {"<math><annotation-xml encoding=\"application/xhtml&plus;xml\"><title>", false},
+        {"<math><annotation-xml encoding=bogus encoding=\"text/html\"><title>", true},
+        {"<math><annotation-xml encoding=\"text/html \" ><title>", true},
+        {"<svg><![CDATA[>", false}, {"<svg><![CDATA[foo]]>", true},
+        {"<svg><title><![CDATA[>", true},
+        {"<script><!--<script></script>", false},
+        {"<script><!--<script></script>--></script>", true},
+        {"<script><!--<script>-->", false},
+        {"<script></\xc5\xbf" "cript>", false},
+        {"<script></script attr=\"", false},
+        {"<script></script attr=\">\">", true},
+        {"</!", false}, {"</?", false}, {"</<", false}, {"</>", true},
+    };
+    for (const auto &test : contexts) {
+        const QString body = QString::fromUtf8(test.prefix) + TAG;
+        chk(test.prefix, inExecutingHtmlContext(body, body.indexOf(TAG)) == test.element);
+    }
+    chk("a later active reflection survives an earlier template reflection",
+        runs("<template><nlk0a1b2c3d></template><nlk0a1b2c3d>"));
+
     // ===== queryWith: preserve others, replace target, percent-encode =====
     chk("queryWith replaces target, keeps others, encodes",
         [](){ const QString q = queryWith("a=1&b=2", "b", "<nlk>");

@@ -10,6 +10,17 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Reflected HTML context handling
+- Keep HTML template contents inert, including nested templates and apparent
+  closing tags inside raw text, comments or attributes.
+- Track SVG and MathML namespaces, HTML integration points, foreign-content
+  breakouts, CDATA and self-closing foreign elements.
+- Respect escaped script states and complete tag/attribute boundaries before
+  changing context. Duplicate annotation encoding attributes use the first value.
+- Expand the pinned Chromium corpus to 1,255 context comparisons and add 13
+  public API checks. Keep the probe partial: frameset handling, complete tree
+  construction and proof of script execution remain outside these fixes.
+
 ### Repeater response bytes
 - Preserve wire responses and inspection body bytes separately in snapshots and
   per-tab history. Current responses survive project switches and app restarts;
