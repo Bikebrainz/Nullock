@@ -72,12 +72,12 @@ Result test(const Request &reqIn) {
     for (const QString &param : params) {
         if (result.requestsSent >= kMaxSends) break;
         const QString marker = randMarker();
-        const QString tag = "<" + marker + ">";          // the executable proof
+        const QString tag = "<" + marker + ">";          // element-injection marker
         const auto r = send(queryWith(req.query, param, tag));
         if (!r.ok) continue;
         // Must be an HTML response, the tag must reflect with raw (unencoded)
         // angle brackets, and that reflection must sit in element content --
-        // not a comment, raw-text element, or attribute -- to actually run.
+        // not a comment, raw-text element, attribute or inert template.
         if (!canExecuteHtml(r.parsed.headers)) continue;
         const QString body = QString::fromUtf8(r.parsed.body);
         // Check EVERY occurrence, case-insensitively: an app may normalize the
