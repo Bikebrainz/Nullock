@@ -34,6 +34,11 @@ const act = (fn, ...args) => {
     return Promise.resolve(NL.actions[fn](...args)).catch(e => window.alert(e.message || "Action failed"));
 };
 
+const EMPTY_REPEATER_RESPONSE = {
+  response: "", responseWireBase64: "", responseBodyBase64: "",
+  responseBodyDecoded: false, responseBytes: -1, elapsedMs: -1,
+};
+
 function reducer(state, action) {
   switch (action.type) {
     case "set":
@@ -78,6 +83,7 @@ function reducer(state, action) {
         tab: "repeater",
         repeater: {
           ...state.repeater,
+          ...EMPTY_REPEATER_RESPONSE,
           host: row.host,
           port: row.port || (row.tls ? 443 : 80),
           tls: row.tls,
@@ -161,7 +167,8 @@ function reducer(state, action) {
       return { ...state, repeater: { ...state.repeater, statusLine: "sending…" } };
     case "repeater-clear":
       act("repeaterClear");
-      return { ...state, repeater: { ...state.repeater, request: "", response: "", statusLine: "—" } };
+      return { ...state, repeater: { ...state.repeater, ...EMPTY_REPEATER_RESPONSE,
+        request: "", requestEncoding: "utf8", statusLine: "—" } };
 
     case "intruder-set":
       act("intruderSet", action.payload);
@@ -235,7 +242,8 @@ function reducer(state, action) {
       return {
         ...state,
         tab: "repeater",
-        repeater: { ...state.repeater, host, port, tls, request: text, response: "", statusLine: "ready · sent from intercept" },
+        repeater: { ...state.repeater, ...EMPTY_REPEATER_RESPONSE,
+          host, port, tls, request: text, statusLine: "ready · sent from intercept" },
       };
     }
     case "send-to-intruder-raw": {

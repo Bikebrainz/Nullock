@@ -188,6 +188,8 @@ jobs:
         run: node Tests/ui/workspace_recovery_browser_test.cjs build/Src/App/Release/NullockApp.exe
       - name: browser Repeater responsiveness
         run: node Tests/ui/repeater_responsiveness_browser_test.cjs build/Src/App/Release/NullockApp.exe
+      - name: Repeater response bytes and binary downloads
+        run: node Tests/ui/repeater_bytes_browser_test.cjs build/Src/App/Release/NullockApp.exe
       - name: first capture workflow and documentation
         run: node Tests/ui/first_use_browser_test.cjs build/Src/App/Release/NullockApp.exe
       - name: browser advanced scope validation
@@ -284,6 +286,7 @@ jobs:
           python3 scripts/workspace_recovery_regression.py "$APP"
           python3 scripts/control_responsiveness_regression.py "$APP"
           python3 scripts/repeater_cli_runtime.py "$APP"
+          python3 scripts/repeater_bytes_regression.py "$APP"
       - name: build and verify Linux packages
         run: |
           cpack --config build/CPackConfig.cmake -G 'DEB;RPM;TGZ' -B packages

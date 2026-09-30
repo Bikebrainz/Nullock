@@ -749,6 +749,31 @@ function RepeaterHeadersView({ raw, onChange }) {
   );
 }
 
+function repeaterResponseBytes(rep, source) {
+  const encoded = source === "wire" ? rep.responseWireBase64 : rep.responseBodyBase64;
+  return Uint8Array.from(atob(encoded || ""), c => c.charCodeAt(0));
+}
+
+function repeaterRequestHex(text, encoding) {
+  if (encoding === "latin1" && /[^\u0000-\u00ff]/.test(text))
+    return "Request contains characters outside Latin-1. Select UTF-8 encoding.";
+  const separator = /\r?\n\r?\n/.exec(text);
+  const body = separator ? text.slice(separator.index + separator[0].length) : "";
+  const bytes = encoding === "latin1"
+    ? Uint8Array.from(body, c => c.charCodeAt(0)) : new TextEncoder().encode(body);
+  return hexDumpBytes(bytes);
+}
+
+function downloadRepeaterResponse(rep, source) {
+  const url = URL.createObjectURL(new Blob([repeaterResponseBytes(rep, source)],
+    {type: "application/octet-stream"}));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = source === "wire" ? "nullock-response.http" : "nullock-response-body.bin";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function RepeaterEditorToolbar({
   views, active, onView, search, onSearch, matchCount, onNext, onPrev,
   caseSensitive, onCaseSensitive, regex, onRegex,
@@ -1221,6 +1246,7 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   // search (#348) and a Burp-style selection readout (#362).
   const [reqView, setReqView] = React.useState("raw");
   const [respView, setRespView] = React.useState("raw");
+  const [respByteSource, setRespByteSource] = React.useState("body");
   const [reqSearch, setReqSearch] = React.useState("");
   const [respSearch, setRespSearch] = React.useState("");
   const [reqMatchIdx, setReqMatchIdx] = React.useState(-1);
@@ -1256,9 +1282,11 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   const histPrevDisabled = !histCount || histPos === 0;
   const histNextDisabled = histPos === null;
 
-  const reqText = reqView === "raw" ? rep.request : renderView(rep.request, reqView);
+  const reqText = reqView === "hex" ? repeaterRequestHex(rep.request, rep.requestEncoding)
+    : reqView === "raw" ? rep.request : renderView(rep.request, reqView);
   const respBody = renderView(rep.response, "body");
-  const respText = respView === "raw" ? rep.response : renderView(rep.response, respView);
+  const respText = respView === "hex" ? hexDumpBytes(repeaterResponseBytes(rep, respByteSource))
+    : respView === "raw" ? rep.response : renderView(rep.response, respView);
 
   const reqMatches = React.useMemo(
     () => repeaterFindMatches(reqText, reqSearch, { caseSensitive: reqCaseSensitive, regex: reqRegex }),
@@ -1542,9 +1570,9 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1px 1fr", height: "100%", minHeight: 0, borderTop: "1px solid var(--line)" }}>
         <div className="pane" style={{ minWidth: 0 }}>
-          <div className="pane-head">
+          <div className="pane-head" style={{height: "auto", minHeight: 26, flexWrap: "wrap", flexShrink: 0, paddingBlock: 4}}>
             <span style={{ color:"var(--accent-2)" }}>▸</span>
-            <span>REQUEST · editable</span>
+            <span style={{whiteSpace: "nowrap"}}>REQUEST · editable</span>
             <select aria-label="Request encoding" value={rep.requestEncoding || "utf8"}
               onChange={e => dispatch({type: "repeater-set", payload: {requestEncoding: e.target.value}})}>
               <option value="utf8">UTF-8</option><option value="latin1">Latin-1 bytes</option>
@@ -1636,9 +1664,9 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
         </div>
         <div className="divider-v" />
         <div className="pane" style={{ minWidth: 0 }}>
-          <div className="pane-head">
+          <div className="pane-head" style={{height: "auto", minHeight: 26, flexWrap: "wrap", flexShrink: 0, paddingBlock: 4}}>
             <span style={{ color:"var(--accent)" }}>▸</span>
-            <span>RESPONSE · read-only</span>
+            <span style={{whiteSpace: "nowrap"}}>RESPONSE · read-only</span>
             <span className="ph-count">{rep.response.split("\n").length} LINES</span>
             <button className="btn" style={{ marginLeft: 6 }} title="Send to Comparer"
                     onClick={() => sendToComparer("repeater response", rep.response)}>↦ CMP</button>
@@ -1662,6 +1690,18 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             regex={respRegex}
             onRegex={v => { setRespRegex(v); setRespMatchIdx(-1); }}
           />
+          <div style={{display: "flex", alignItems: "center", gap: 8, padding: "4px 10px",
+                       flexWrap: "wrap", flexShrink: 0, borderBottom: "1px solid var(--line)", fontSize: 10}}>
+            <label>Hex / download: <select aria-label="Response byte source" value={respByteSource}
+                    onChange={e => setRespByteSource(e.target.value)}>
+              <option value="body">{rep.responseBodyDecoded ? "Decoded body bytes" : "Body bytes"}</option>
+              <option value="wire">Wire response bytes</option>
+            </select></label>
+            <button className="btn" disabled={rep.responseBytes < 0 || rep.responseBytes === undefined}
+                    title="Download all selected bytes, including bytes beyond the Hex preview"
+                    onClick={() => downloadRepeaterResponse(rep, respByteSource)}>↓ SAVE BYTES</button>
+            <span style={{color: "var(--dim)"}}>Text views decode supported compression.</span>
+          </div>
           {respView === "inspector" ? (
             <RepeaterInspectorPanel raw={rep.response} kind="response" sel={respSel} />
           ) : respView === "render" ? (

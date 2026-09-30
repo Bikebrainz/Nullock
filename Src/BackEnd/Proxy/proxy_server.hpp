@@ -58,12 +58,13 @@ struct HttpResponse {
     // passive scanning, evidence, reporting). Empty when the body wasn't
     // compressed or couldn't be decoded; the wire body is never altered.
     QByteArray decodedBody;
+    bool contentDecoded = false; // distinguishes a decoded empty body from failure
     QString peerAddress;
     bool wasTls = false;
 
     // The best readable view of the body: decoded when available, else raw.
     const QByteArray &bodyForInspection() const {
-        return decodedBody.isEmpty() ? body : decodedBody;
+        return contentDecoded || !decodedBody.isEmpty() ? decodedBody : body;
     }
 };
 
