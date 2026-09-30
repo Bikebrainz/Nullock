@@ -1,6 +1,6 @@
 {
   "audit_date": "2026-07-30",
-  "reconciled_through": "2026-09-29",
+  "reconciled_through": "2026-09-30",
   "method": "Eight parallel readers enumerated Burp Suite's feature set per area and graded Nullock by reading its source; a second adversarial pass per area re-opened every cited file and corrected in both directions (51 verdicts changed). States are reconciled forward as features ship -- each change records the commit that made it true.",
   "grades": {
     "absent": "nothing implements it",
@@ -5260,13 +5260,13 @@
       "effort": "days",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-16",
-        "commit": "c547c38",
-        "note": "Closes the last remaining gap: a \u25c0 \u25b6 control in RepeaterTab's target row (ui-v2/tabs.jsx) navigates the active tab's send history via two pure helpers (repeaterHistoryPrevIndex/repeaterHistoryNextIndex, boundary-clamped) and NL.actions.repeaterHistoryLoad -> POST /api/repeater/history/load. histPos null means \"at the live/newest send\" (already what the tab shows, no wire call needed); a numeric index reloads that entry's full request/response via the existing endpoint. No backend touched -- reads only the historyCount/history[].statusLine/.sentAt fields already in the snapshot (control_server.cpp:1508-1514)."
+        "date": "2026-09-30",
+        "commit": "432ff192",
+        "note": "Refresh stale pre-history evidence and verify byte-preserving navigation. History is session-only; current-response persistence is separate."
       },
-      "gap": "None -- each tab keeps a capped history of prior sends; \u25c0 \u25b6 buttons in the target row (ui-v2/tabs.jsx) step back/forward through it, showing a live n/count position label and a status/timestamp tooltip, and reload the selected entry into the tab via /api/repeater/history/load.",
-      "why": "Confirmed. I re-read the struct and re-ran the synonym hunt myself (historyIndex, undoStack, prevRequest, goBack, goForward, requestHistory, versions[) across Src/Core/Networking and ui-v2 \u2014 zero hits. Send genuinely overwrites in place.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.hpp:19-27 `struct RepeaterTab { QString name; QString host; int port = 443; bool useTls = true; QString requestText; QString responseText; QString statusLine; };` \u2014 no history container. Overwrite at repeater.cpp:138-143 `if (result.ok) { t.responseText = QString::fromUtf8(result.rawResponse); t.statusLine = ...`. Snapshot per-tab object (control_server."
+      "gap": "Each tab keeps up to 100 past sends for the current session. Back/forward navigation restores the request encoding, response wire/body bytes, status and timing. Project persistence saves the currently selected response, not the list of past sends.",
+      "why": "RepeaterHistoryEntry now carries byte arrays alongside readable response text. loadHistoryAt restores those arrays and metadata; the live regression walks every binary, compressed, empty and chunked fixture entry.",
+      "evidence": "Src/Core/Networking/repeater.hpp RepeaterHistoryEntry; Src/Core/Networking/repeater.cpp send/loadHistoryAt/exportState; ui-v2/tabs.jsx history navigation; scripts/repeater_bytes_regression.py."
     },
     {
       "area": "repeater",
@@ -5381,30 +5381,30 @@
       "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "No way to see what a reflected payload actually does in a renderer. (A sandboxed srcdoc iframe would be the safe implementation; rendering attacker-controlled HTML in the tool's own origin would be a self-XSS on the control server.)",
-      "why": "Confirmed, and I verified the proxy 'preview' tab the auditor flagged: it really is only a JSON pretty-printer, not a renderer.",
-      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx response pane: `<textarea className=\"txt readonly\" value={rep.response} readOnly />` \u2014 no view tabs, no iframe. Proxy preview at ui-v2/proxy.jsx:1102-1108 `if (view === \"preview\") { const t = (body || \"\").trim(); if (t.startsWith(\"{\") || t.startsWith(\"[\")) { try { return JSON.stringify(JSON.parse(t), null, 2); } catch (e) {} } return body || \"(no body)\"; }`. No srcdoc",
+      "gap": "The browser response pane renders a static body in an iframe with an empty sandbox. Scripts, forms and same-origin privileges are disabled; it does not demonstrate whether an active payload executes.",
+      "why": "The Render view uses the response body after supported decompression. Shared view splitting accepts both LF and CRLF header separators, so normal HTTP responses populate the body correctly.",
+      "evidence": "ui-v2/tabs.jsx RepeaterTab response render iframe with sandbox=\"\"; ui-v2/proxy.jsx renderView; Tests/ui/repeater_bytes_browser_test.cjs verifies CRLF Body extraction.",
       "audited_state": "absent",
       "reconciled": {
-        "date": "2026-08-08",
-        "commit": "cd03a95",
-        "note": "Response pane gets a Render view: sandboxed srcdoc iframe (sandbox=\"\", no scripts/forms/same-origin) rendering the response body. tabs.jsx RepeaterTab, respView===\"render\"."
+        "date": "2026-09-30",
+        "commit": "432ff192",
+        "note": "Refresh the obsolete claim that no renderer exists; state the static sandbox limit and corrected CRLF body extraction."
       }
     },
     {
       "area": "repeater",
       "feature": "Repeater: message editor views \u2014 Pretty / Raw / Hex for both request and response",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "hours",
-      "gap": "The views exist, but the Repeater response is converted from bytes to UTF-8 text before the Hex view receives it. Invalid UTF-8 bytes become replacement characters; the Hex view shows the encoded display text rather than the original response bytes.",
-      "why": "The browser offers Raw, Headers, Body, Preview and Hex views for both panes, with a static Render view for responses. A live response containing bytes 00 ff 80 41 becomes text 00 U+FFFD U+FFFD 41, so the full byte-fidelity requirement remains incomplete.",
-      "evidence": "ui-v2/tabs.jsx RepeaterEditorToolbar, reqText and respText; ui-v2/proxy.jsx toHexDump uses TextEncoder; Src/Core/Networking/repeater.cpp send converts rawResponse/decodedBody through QString::fromUtf8.",
+      "gap": "Raw, Headers, Body, Preview and Hex are available in both browser panes. Request Hex uses the selected UTF-8 or Latin-1 encoding. Response Hex selects inspection-body bytes or the complete wire response; Save bytes exports the full selection beyond the 64 KiB preview. Text views remain readable UTF-8 interpretations, and Hex is read-only.",
+      "why": "Wire responses and inspection bodies remain separate byte arrays through asynchronous completion, snapshots, per-tab history and current-response project persistence. A live fixture and Chromium downloads preserve every byte value, NUL, invalid UTF-8 and large bodies. Past-send history remains session-only.",
+      "evidence": "Src/Core/Networking/repeater.cpp; Src/BackEnd/Control/control_server.cpp responseWireBase64/responseBodyBase64; ui-v2/tabs.jsx repeaterRequestHex/repeaterResponseBytes/downloadRepeaterResponse; scripts/repeater_bytes_regression.py; Tests/ui/repeater_bytes_browser_test.cjs.",
       "audited_state": "absent",
       "reconciled": {
-        "date": "2026-09-29",
-        "commit": "c2af0a33",
-        "note": "Reconciled against current source and focused CLI, application and browser checks. Correct stale behavior/evidence and state the remaining limits. Grade changed from present to partial."
+        "date": "2026-09-30",
+        "commit": "432ff192",
+        "note": "partial -> present after native, live API, persistence and Chromium download verification. Current responses persist; past sends remain session-only. Hex previews 64 KiB and downloads retain all selected bytes."
       }
     },
     {
@@ -5444,14 +5444,14 @@
       "state": "present",
       "impact": "high",
       "effort": "hours",
-      "gap": "gzip, x-gzip and deflate are decoded for display. Brotli and zstd remain unsupported. Display retains the original response headers, including compressed Content-Length; the decoded text is not a raw wire export.",
-      "why": "HttpClient populates decodedBody through decodeContentEncoding, and Repeater displays it with the original header block. The content_decode native suite tests gzip and both wrapped/raw deflate. The former statement that the change could not be built is stale.",
-      "evidence": "Src/BackEnd/Proxy/content_decode.cpp; Src/Core/Networking/networking.cpp decodeContentEncoding call; Src/Core/Networking/repeater.cpp decodedBody display; Tests/content_decode/content_decode_test.cpp.",
+      "gap": "gzip, x-gzip and deflate are decoded for display, including valid empty streams. Brotli and zstd remain unsupported. Display retains original response headers, including compressed Content-Length; the separate wire response Hex/download preserves original bytes.",
+      "why": "HttpClient records whether a decoded inspection body is available so an empty decompressed body is not mistaken for failure. Repeater keeps original wire bytes separately. Native tests cover gzip and wrapped/raw deflate; live API and browser tests cover binary gzip, empty gzip, malformed compression, persistence and downloads.",
+      "evidence": "Src/BackEnd/Proxy/content_decode.cpp; Src/Core/Networking/networking.cpp; Src/Core/Networking/repeater.cpp; Tests/content_decode/content_decode_test.cpp; scripts/repeater_bytes_regression.py; Tests/ui/repeater_bytes_browser_test.cjs.",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-09-29",
-        "commit": "c2af0a33",
-        "note": "Reconciled against current source and focused CLI, application and browser checks. Correct stale behavior/evidence and state the remaining limits."
+        "date": "2026-09-30",
+        "commit": "432ff192",
+        "note": "Keep compressed wire bytes separate from the inspection body and recognize valid empty compressed streams. Existing decompression limits and unsupported encodings remain unchanged."
       }
     },
     {

@@ -10,6 +10,17 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Repeater response bytes
+- Preserve wire responses and inspection body bytes separately in snapshots and
+  per-tab history. Current responses survive project switches and app restarts;
+  the list of past sends remains session-only.
+- Use the selected request encoding for request Hex. Response Hex can show body
+  bytes or the original wire response, including compressed data and chunk framing.
+- Add full binary downloads for either response representation. The Hex preview
+  stops at 64 KiB without truncating the saved file.
+- Recognize valid empty gzip/deflate streams and show CRLF-separated response
+  bodies correctly. Clear and failed encodings discard stale response bytes.
+
 ### Build follow-up
 - Add the September 29 to-do list with reproduced gaps and acceptance checks.
 - Correct website release labels: v3.7.0 is the latest public release; v3.8.0
