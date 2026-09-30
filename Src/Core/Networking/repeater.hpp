@@ -90,6 +90,7 @@ class Repeater : public QObject {
     Q_PROPERTY(qint64  elapsedMs    READ elapsedMs                          NOTIFY responseChanged)
     Q_PROPERTY(int     responseBytes READ responseBytes                     NOTIFY responseChanged)
     Q_PROPERTY(bool    busy         READ busy                               NOTIFY busyChanged)
+    Q_PROPERTY(bool    cancelling   READ cancelling                         NOTIFY busyChanged)
     Q_PROPERTY(int     activeTab    READ activeTab    NOTIFY tabsChanged)
     Q_PROPERTY(int     tabCount     READ tabCount     NOTIFY tabsChanged)
     // Recompute Content-Length from the actual body before each send (Burp's

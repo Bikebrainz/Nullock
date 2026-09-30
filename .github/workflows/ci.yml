@@ -158,6 +158,8 @@ jobs:
         run: python scripts/outbound_scope_regression.py build/Src/App/Release/NullockApp.exe
       - name: control API and Repeater responsiveness
         run: python scripts/control_responsiveness_regression.py build/Src/App/Release/NullockApp.exe
+      - name: native Repeater Send and Stop controls
+        run: python scripts/native_repeater_controls_test.py
       - name: workspace crash recovery
         run: python scripts/workspace_recovery_regression.py build/Src/App/Release/NullockApp.exe
       - name: authenticated scanner regression
