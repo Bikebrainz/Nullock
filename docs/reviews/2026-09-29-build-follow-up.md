@@ -52,10 +52,11 @@ API and browser regressions are included in CI.
 
 ### 2. Correct the remaining reflected-XSS HTML contexts
 
-- [ ] Handle inert template contents and SVG/MathML parsing contexts.
-- [ ] Expand the pinned-browser corpus before changing the parser or its grade.
+- [x] Handle inert template contents and SVG/MathML parsing contexts.
+- [x] Expand the pinned-browser corpus before changing the parser or its grade.
+- [ ] Model frameset insertion modes and continue checking malformed tree construction.
 
-**Evidence:** after the tag-boundary fixes, a 97-context browser comparison left
+**Original evidence:** after the tag-boundary fixes, a 97-context browser comparison left
 two mismatches for the marker `<nlk0a1b2c3d>`:
 
 | HTML | Native marker classification | Chromium element present |
@@ -67,10 +68,19 @@ The browser result describes this marker's parsed context, not a proof that an
 arbitrary script payload executes. Existing committed browser coverage lives in
 `Tests/ui/xss_context_browser_test.cjs` and `xss_media_types_browser_test.cjs`.
 
-**Done when:** the corpus covers nested templates, foreign-content integration
-points, malformed nesting and script/raw-text states, with native results
-matching the pinned browser. Keep XML execution, stored XSS and DOM XSS outside
-the claim unless they receive their own implementation and verification.
+**Completed September 30:** [2bc4bcfa](https://github.com/Bikebrainz/Nullock/commit/2bc4bcfa)
+tracks HTML templates, SVG/MathML namespaces and integration points, foreign
+breakouts, CDATA, escaped script states and complete attribute boundaries.
+The two original failures now match Chromium. The focused native suite passes
+329 assertions and the committed browser corpus passes 1,255 comparisons.
+Thirteen new public-API fixtures cover active and inert contexts, including a
+later active reflection after an earlier inert template reflection.
+
+**Remaining evidence:** `<frameset><nlk0a1b2c3d>` and
+`<frameset></frameset><nlk0a1b2c3d>` still return true in the reduced parser while
+Chromium creates no marker element. Keep the grade partial until these and
+other tree-construction gaps are addressed. XML execution, stored XSS, DOM XSS
+and proof of arbitrary script execution remain outside this marker check.
 
 ### 3. Finish Repeater cancellation and native-window responsiveness
 

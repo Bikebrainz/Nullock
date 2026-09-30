@@ -972,14 +972,14 @@
       "state": "partial",
       "impact": "low",
       "effort": "hours",
-      "gap": "The reduced HTML tokenizer still misclassifies inert template content and some SVG/MathML contexts; it is not a complete browser parser. XML document execution, stored XSS and DOM XSS remain outside this probe. Document sniffing models Chromium 151; older browsers can differ on combined nosniff values.",
-      "why": "The public API and deep audit detect reflected tags using effective Content-Type/nosniff values and HTML context checks. Exact raw-text tag names, iframe fallback content and abrupt comment endings now match pinned Chromium comparisons. Confirmed template and foreign-content mismatches prevent a full-parity claim.",
-      "evidence": "Src/Core/Networking/xss_logic.cpp effectiveMediaType/canExecuteHtml/inExecutingHtmlContext; Tests/xss_reflected/xss_reflected_test.cpp; Tests/ui/xss_context_browser_test.cjs; Tests/ui/xss_media_types_browser_test.cjs; scripts/probe_smoke.sh xss-context, xss-media and xss-nosniff fixtures.",
+      "gap": "The reduced context parser now handles HTML templates and tested SVG/MathML contexts, but frameset insertion modes remain a reproduced false positive. Full browser tree construction, XML execution, stored XSS and DOM XSS remain outside this probe. Marker presence does not prove script execution. Browser comparisons target Chromium 151.",
+      "why": "Namespace tracking distinguishes inert HTML templates from foreign elements with the same names. HTML integration points, foreign breakouts, CDATA, escaped script states and complete attribute boundaries match 1,255 pinned Chromium comparisons. Thirteen additional public-API fixtures verify the scanner path, including a later active reflection after an inert one.",
+      "evidence": "Src/Core/Networking/xss_logic.cpp contextTag/htmlAnnotationEncoding/inExecutingHtmlContext; Tests/xss_reflected/xss_reflected_test.cpp (329 assertions); Tests/ui/xss_context_browser_test.cjs (1,255 comparisons); scripts/probe_smoke.sh xss-context fixtures. Remaining reproduction: <frameset><nlk0a1b2c3d> is classified active while Chromium creates no marker.",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-09-29",
-        "commit": "b392a63b",
-        "note": "Correct 66 browser/analyzer mismatches involving custom tag names, iframe fallback text and abrupt comment closure. Add 95 pinned-browser context comparisons and five public-API fixtures. Downgrade present to partial after separately reproducing template and SVG context gaps; those cases remain follow-up work."
+        "date": "2026-09-30",
+        "commit": "2bc4bcfa",
+        "note": "Correct the template and SVG/MathML gaps reproduced in the September build follow-up. Expand browser and live API checks. Keep partial because frameset handling and complete browser tree construction remain unfinished."
       }
     },
     {
