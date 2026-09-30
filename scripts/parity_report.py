@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate docs/roadmap/index.html -- the Nullock-vs-Burp parity roadmap.
 
-WHAT THIS IS FOR. docs/roadmap/parity.json holds 409 Burp Suite capabilities,
+WHAT THIS IS FOR. docs/roadmap/parity.json holds the Burp Suite capabilities,
 each graded against Nullock's actual source. It is not a one-off report: it is
 the ROADMAP. Everything not yet `present` or `exceeds` is the remaining work, in
 priority order, and every commit that closes a gap is expected to update the
@@ -56,10 +56,10 @@ def build(doc):
     done = counts["present"] + counts["exceeds"]
     total = len(items)
     pct = round(done * 100.0 / total)
-    # Newest first: a just-closed gap must land at the TOP of "Recently closed",
+    # Newest first: a reconciled entry belongs at the top of "Recently updated",
     # not wherever it happens to sit in parity.json's array order. Dates are ISO
     # (YYYY-MM-DD) so a string sort is chronological; a missing/blank date sorts
-    # last. Python's sort is stable, so same-day closes keep their array order.
+    # last. Python's sort is stable, so same-day updates keep their array order.
     reconciled = sorted(
         (i for i in items if "reconciled" in i),
         key=lambda i: (i.get("reconciled") or {}).get("date", ""),
@@ -118,7 +118,7 @@ def build(doc):
                     "the full set is in the capability table below." % (RECENT_CAP, len(reconciled)))
         recent = ("""<section class="panel">
     <h2>Recently updated</h2>
-    <p class="muted" style="font-size:13.5px;">Capabilities reconciled since the audit, including closed gaps and corrections, newest first. Each entry records its date and implementation commit.%s</p>
+    <p class="muted" style="font-size:13.5px;">Capabilities reconciled since the audit, including closed gaps and corrections, newest first. Each entry records its date and source or verification commit.%s</p>
     <ul class="rm-recent">%s</ul>
   </section>""" % (cap_note, rows))
 
@@ -180,6 +180,7 @@ def build(doc):
 
   <section class="panel">
     <h2>Where the work is</h2>
+    <p>Start with the <a href="https://github.com/Bikebrainz/Nullock/blob/Nullock/docs/reviews/2026-09-29-build-follow-up.md">September 29 build follow-up</a> for reproduced gaps, priorities and acceptance checks.</p>
     <p class="muted" style="font-size:13.5px;">One bar per functional area, ordered worst-first. Click an area to filter the register.</p>
     <div class="rm-matrix">%s</div>
     <div class="rm-legend">%s</div>
@@ -270,7 +271,7 @@ def build(doc):
 
       var body = el("div", "rm-body"); body.hidden = true;
       if (d.o && d.o !== d.s) {
-        body.appendChild(el("div", "rm-moved mono", "closed since audit: " + d.o + " \\u2192 " + d.s));
+        body.appendChild(el("div", "rm-moved mono", "changed since audit: " + d.o + " \\u2192 " + d.s));
       }
       if (d.r) { var p0 = el("p", "rm-note", d.r); body.appendChild(p0); }
       if (d.g) { body.appendChild(el("h4", null, "Gap")); body.appendChild(el("p", null, d.g)); }

@@ -10,6 +10,14 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Build follow-up
+- Add the September 29 to-do list with reproduced gaps and acceptance checks.
+- Correct website release labels: v3.7.0 is the latest public release; v3.8.0
+  remains an unpublished draft.
+- Correct stale scope-enforcement evidence and distinguish native QML Send
+  behavior from asynchronous browser/API/CLI sends.
+- Label roadmap grade changes as changes, including downward corrections.
+
 ### Repeater CLI and roadmap
 - Reject empty drafts and blank target hosts before accepting an API send, so
   the CLI cannot report a previous response as a successful new request.
@@ -1651,7 +1659,9 @@ developer-facing record.
   the mechanism the doc comment always described actually produces a report
   now instead of only ever being reachable from a crash signal.
 
-## [3.8.0] — 2026-08-20
+## 3.8.0 — unpublished draft
+
+Notes prepared August 20, 2026. This version has not been published as a GitHub release.
 
 This release folds in a large security-and-correctness pass: a whole-codebase
 security review (16 findings, from a CRITICAL CI-action fix down to
