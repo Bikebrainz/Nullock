@@ -675,6 +675,7 @@ ApplicationWindow {
                             spacing: 8
                             HeaderCell { text: "Target" }
                             TextField {
+                                id: repeaterHostField
                                 Layout.preferredWidth: 280
                                 placeholderText: "host"
                                 text: repeater.host
@@ -686,8 +687,10 @@ ApplicationWindow {
                             }
                             HeaderCell { text: ":" }
                             TextField {
+                                id: repeaterPortField
                                 Layout.preferredWidth: 80
                                 text: "" + repeater.port
+                                validator: IntValidator { bottom: 1; top: 65535; locale: "C" }
                                 color: root.text
                                 font.family: "Consolas"
                                 font.pixelSize: 12
@@ -701,11 +704,32 @@ ApplicationWindow {
                             Item { Layout.fillWidth: true }
                             Cell { text: repeater.statusLine; color: root.accent; Layout.preferredWidth: 200 }
                             AccentButton {
-                                label: repeater.busy ? "..." : "Send"
-                                onClicked: repeater.send()
+                                label: repeater.cancelling ? "Stopping..." : "Stop"
+                                visible: repeater.busy
+                                enabled: !repeater.cancelling
+                                opacity: enabled ? 1 : 0.5
+                                onClicked: repeater.cancel()
+                                ToolTip.visible: stopHover.hovered
+                                ToolTip.text: "Stops after the current response or transport timeout; skips further redirects."
+                                HoverHandler { id: stopHover }
+                            }
+                            AccentButton {
+                                label: repeater.busy ? "Sending..." : "Send"
+                                enabled: !repeater.busy && repeaterHostField.text.trim().length > 0
+                                         && repeaterPortField.acceptableInput && repeater.requestText.length > 0
+                                opacity: enabled ? 1 : 0.5
+                                onClicked: {
+                                    // Rectangle buttons do not necessarily take focus from a field.
+                                    // Commit the visible target before copying it into the worker.
+                                    repeater.host = repeaterHostField.text.trim()
+                                    repeater.port = Number(repeaterPortField.text)
+                                    repeater.sendAsync()
+                                }
                             }
                             AccentButton {
                                 label: "Clear"
+                                enabled: !repeater.busy
+                                opacity: enabled ? 1 : 0.5
                                 onClicked: repeater.clear()
                             }
                         }
