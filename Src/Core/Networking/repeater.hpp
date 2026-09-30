@@ -31,6 +31,9 @@ struct RepeaterHistoryEntry {
     QString request;
     bool requestLatin1 = false;
     QString response;
+    QByteArray rawResponse;
+    QByteArray responseBody;
+    bool responseBodyDecoded = false;
     QString statusLine;
     QString sentAt;      // ISO-8601 UTC
     // Response metadata for this send. elapsedMs is the network round-trip time
@@ -51,6 +54,11 @@ struct RepeaterTab {
     QString requestText;
     bool requestLatin1 = false;
     QString responseText;
+    // Wire response and inspection body stay byte-exact; responseText is only
+    // a readable UTF-8 view and must never be used for binary export.
+    QByteArray rawResponse;
+    QByteArray responseBody;
+    bool responseBodyDecoded = false;
     QString statusLine;
     // Response metadata from the last send in this tab: round-trip time in ms and
     // the final raw response's byte length. -1 until the first send. Timing is the
@@ -116,6 +124,9 @@ public:
     bool requestLatin1() const { return activeTab_().requestLatin1; }
     QString requestText() const  { return activeTab_().requestText; }
     QString responseText() const { return activeTab_().responseText; }
+    const QByteArray &rawResponse() const { return activeTab_().rawResponse; }
+    const QByteArray &responseBody() const { return activeTab_().responseBody; }
+    bool responseBodyDecoded() const { return activeTab_().responseBodyDecoded; }
     QString statusLine() const   { return activeTab_().statusLine; }
     qint64  elapsedMs() const    { return activeTab_().elapsedMs; }
     int     responseBytes() const{ return activeTab_().responseBytes; }
@@ -128,9 +139,8 @@ public:
     const QList<RepeaterTab> &tabs() const { return m_tabs; }
 
     // Full multi-tab state as JSON, for project-file persistence. exportState
-    // captures the request side (name/host/port/tls/request/notes/statusLine) +
-    // the active index; the response BODY is omitted so project.json stays small
-    // (re-sending reproduces it). importState REPLACES all tabs; an empty array
+    // captures requests and each tab's current response bytes, plus the active
+    // index. Past sends remain session-only. importState REPLACES all tabs; an empty array
     // resets to a single blank tab so a reopened project never shows the previous
     // engagement's staged requests.
     QJsonObject exportState() const;

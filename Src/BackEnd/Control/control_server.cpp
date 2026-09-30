@@ -1592,6 +1592,9 @@ QByteArray ControlServer::buildSnapshot() const {
         repeater["requestEncoding"] = m_wiring.repeater->requestLatin1() ? "latin1" : "utf8";
         repeater["request"]    = m_wiring.repeater->requestText();
         repeater["response"]   = m_wiring.repeater->responseText();
+        repeater["responseWireBase64"] = QString::fromLatin1(m_wiring.repeater->rawResponse().toBase64());
+        repeater["responseBodyBase64"] = QString::fromLatin1(m_wiring.repeater->responseBody().toBase64());
+        repeater["responseBodyDecoded"] = m_wiring.repeater->responseBodyDecoded();
         repeater["statusLine"] = m_wiring.repeater->statusLine();
         // Response metadata (Burp shows both next to the status): -1 before a send.
         repeater["elapsedMs"]     = m_wiring.repeater->elapsedMs();

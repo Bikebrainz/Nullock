@@ -19,7 +19,10 @@ namespace Nullock::Proxy {
 // keeps the original compressed body and re-encoding stays the browser's job.
 // Callers store the result alongside the raw body (HttpResponse::decodedBody)
 // and read it via HttpResponse::bodyForInspection().
+// If supplied, decoded reports whether an inspection body is available,
+// including a valid empty stream or the existing partial truncated-stream view.
 QByteArray decodeContentEncoding(const QString &encoding, const QByteArray &body,
-                                 qint64 maxOut = 128LL * 1024 * 1024);
+                                 qint64 maxOut = 128LL * 1024 * 1024,
+                                 bool *decoded = nullptr);
 
 } // namespace Nullock::Proxy

@@ -19,6 +19,10 @@ RepeaterTab makeBlankTab(const QString &name = "tab 1") {
     t.name = name;
     return t;
 }
+QString responseDisplay(const QByteArray &wire, const QByteArray &body) {
+    const int end = wire.indexOf("\r\n\r\n");
+    return QString::fromUtf8(end < 0 ? wire : wire.left(end + 4) + body);
+}
 } // namespace
 
 Repeater::Repeater(Nullock::FrontEnd::ProxyModel *historyModel, QObject *parent)
@@ -125,6 +129,9 @@ void Repeater::clear() {
     t.requestText.clear();
     t.requestLatin1 = false;
     t.responseText.clear();
+    t.rawResponse.clear();
+    t.responseBody.clear();
+    t.responseBodyDecoded = false;
     t.statusLine.clear();
     t.elapsedMs     = -1;
     t.responseBytes = -1;
@@ -180,6 +187,9 @@ void Repeater::sendAsync() {
             if (tabIndex >= 0 && tabIndex < m_tabs.size()) {
                 auto &target = m_tabs[tabIndex];
                 target.responseText = completed.responseText; target.statusLine = completed.statusLine;
+                target.rawResponse = completed.rawResponse;
+                target.responseBody = completed.responseBody;
+                target.responseBodyDecoded = completed.responseBodyDecoded;
                 target.elapsedMs = completed.elapsedMs; target.responseBytes = completed.responseBytes;
                 target.history = completed.history;
             }
@@ -200,6 +210,9 @@ void Repeater::send() {
         t.statusLine = "Encoding error";
         t.elapsedMs = 0;
         t.responseBytes = 0;
+        t.rawResponse.clear();
+        t.responseBody.clear();
+        t.responseBodyDecoded = false;
         emit responseChanged();
         return;
     }
@@ -280,22 +293,14 @@ void Repeater::send() {
     // is the final raw response as received (0 on a total transport failure).
     t.elapsedMs     = roundTrip.elapsed();
     t.responseBytes = result.rawResponse.size();
+    t.rawResponse = result.rawResponse;
+    t.responseBody = result.parsed.bodyForInspection();
+    t.responseBodyDecoded = result.parsed.contentDecoded || !result.parsed.decodedBody.isEmpty();
 
     if (result.ok) {
-        // Unpack gzip/deflate for the response view: keep the original header
-        // block verbatim (including the Content-Encoding header itself, so the
-        // user can see the body WAS compressed) and swap in the decoded body
-        // in place of the compressed bytes that would otherwise render as
-        // binary mojibake. result.rawResponse (the wire bytes) is untouched --
-        // this only changes what's displayed. No-op (falls through to the
-        // fromUtf8 branch) when there was nothing to decode or decoding failed.
-        const int headerEnd = result.rawResponse.indexOf("\r\n\r\n");
-        if (headerEnd >= 0 && !result.parsed.decodedBody.isEmpty()) {
-            const QByteArray headBlock = result.rawResponse.left(headerEnd + 4);
-            t.responseText = QString::fromUtf8(headBlock) + QString::fromUtf8(result.parsed.decodedBody);
-        } else {
-            t.responseText = QString::fromUtf8(result.rawResponse);
-        }
+        // Text is a readable view of the transfer/content-decoded body. Keep
+        // the original headers and wire bytes separately for exact inspection.
+        t.responseText = responseDisplay(t.rawResponse, t.responseBody);
         t.statusLine   = QString("%1 %2 %3")
                              .arg(result.parsed.httpVersion)
                              .arg(result.parsed.statusCode)
@@ -317,6 +322,9 @@ void Repeater::send() {
         h.request       = t.requestText;
         h.requestLatin1 = t.requestLatin1;
         h.response      = t.responseText;
+        h.rawResponse   = t.rawResponse;
+        h.responseBody  = t.responseBody;
+        h.responseBodyDecoded = t.responseBodyDecoded;
         h.statusLine    = t.statusLine;
         h.sentAt        = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
         h.elapsedMs     = t.elapsedMs;
@@ -343,6 +351,9 @@ bool Repeater::loadHistoryAt(int index) {
     t.requestText   = h.request;
     t.requestLatin1 = h.requestLatin1;
     t.responseText  = h.response;
+    t.rawResponse   = h.rawResponse;
+    t.responseBody  = h.responseBody;
+    t.responseBodyDecoded = h.responseBodyDecoded;
     t.statusLine    = h.statusLine;
     t.elapsedMs     = h.elapsedMs;
     t.responseBytes = h.responseBytes;
@@ -385,11 +396,16 @@ QJsonObject Repeater::exportState() const {
             { "requestLatin1", t.requestLatin1 },
             { "notes",      t.notes },
             { "statusLine", t.statusLine },
+            { "responseWireBase64", QString::fromLatin1(t.rawResponse.toBase64()) },
+            { "responseBodyBase64", QString::fromLatin1(t.responseBody.toBase64()) },
+            { "responseBodyDecoded", t.responseBodyDecoded },
+            { "responseError", t.responseText.startsWith("[error]") ? t.responseText : QString() },
+            { "elapsedMs", t.elapsedMs },
+            { "responseBytes", t.responseBytes },
         });
     }
-    // responseText is deliberately omitted -- a response body can be megabytes and
-    // project.json is a small metadata file rewritten on every change; the request
-    // side is what a reopen needs, and re-sending reproduces the response.
+    // Save only the selected response per tab. The capped send history remains
+    // session-only; persisting every past response would multiply project size.
     return QJsonObject{ { "activeTab", m_active }, { "tabs", arr },
         { "autoContentLength", m_autoContentLength }, { "followRedirects", m_followPolicy },
         { "processCookies", m_followCookies } };
@@ -409,6 +425,14 @@ void Repeater::importState(const QJsonObject &state) {
         t.requestLatin1 = o.value("requestLatin1").toBool();
         t.notes       = o.value("notes").toString();
         t.statusLine  = o.value("statusLine").toString();
+        t.rawResponse = QByteArray::fromBase64(o.value("responseWireBase64").toString().toLatin1());
+        t.responseBody = QByteArray::fromBase64(o.value("responseBodyBase64").toString().toLatin1());
+        t.responseBodyDecoded = o.value("responseBodyDecoded").toBool();
+        t.responseText = o.value("responseError").toString();
+        if (t.responseText.isEmpty()) t.responseText = responseDisplay(t.rawResponse, t.responseBody);
+        t.elapsedMs = o.value("elapsedMs").toVariant().toLongLong();
+        if (!o.contains("elapsedMs")) t.elapsedMs = -1;
+        t.responseBytes = o.value("responseBytes").toInt(-1);
         restored.append(t);
     }
     // Never leave zero tabs: a project with no saved Repeater state (or a cleared
@@ -512,6 +536,9 @@ int Repeater::duplicateTab(int index) {
     RepeaterTab copy = m_tabs[index];
     copy.name = m_tabs[index].name + " (copy)";
     copy.responseText.clear();
+    copy.rawResponse.clear();
+    copy.responseBody.clear();
+    copy.responseBodyDecoded = false;
     copy.statusLine.clear();
     copy.elapsedMs = -1;
     copy.responseBytes = -1;

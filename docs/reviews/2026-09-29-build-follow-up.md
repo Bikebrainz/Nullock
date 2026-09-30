@@ -26,21 +26,29 @@ Certificate details from #23 and HTML-context details from
 
 ### 1. Preserve response bytes through Repeater and Hex views
 
-- [ ] Carry the original response bytes through the tab model, snapshot and
+- [x] Carry the original response bytes through the tab model, snapshot and
   per-tab history, with a separate decoded display representation.
-- [ ] Make request Hex honor the request's actual UTF-8 or Latin-1 encoding.
-- [ ] Make response Hex and binary export use the selected byte representation.
+- [x] Make request Hex honor the request's actual UTF-8 or Latin-1 encoding.
+- [x] Make response Hex and binary export use the selected byte representation.
 
-**Evidence:** a loopback response body `00 ff 80 41` becomes
+**Original evidence:** a loopback response body `00 ff 80 41` became
 `00 U+FFFD U+FFFD 41` in Repeater. `Repeater::send` converts the raw or decoded
 body with `QString::fromUtf8`; `toHexDump` then UTF-8-encodes the display text.
-The original bytes cannot be recovered from that string. A Latin-1 request can
-send correctly while its Hex view shows different bytes.
+The original bytes could not be recovered from that string. A Latin-1 request
+could send correctly while its Hex view showed different bytes.
 
-**Done when:** all 256 byte values survive send, snapshot, history navigation,
-project save/reload and export; Hex matches the fixture bytes. Compressed
-responses distinguish original wire bytes from decoded body bytes. Include
-empty bodies, invalid UTF-8, NULs and bodies larger than the preview limit.
+**Completed September 30:** [432ff192](https://github.com/Bikebrainz/Nullock/commit/432ff192)
+preserves separate wire and inspection-body bytes. All 256 byte values survive
+send, snapshots, history navigation, current-response project save/reload and
+binary export. Browser tests verify request encodings and full downloads beyond
+the 64 KiB Hex preview. Fixtures cover NULs, invalid UTF-8, gzip, empty compressed
+bodies, malformed compression and chunked responses. Past-send history remains
+session-only; each tab's current response is persisted.
+
+**Validation:** 102 native suites, 64 runtime checks with the native window,
+26 workspace recovery checks, 20 control responsiveness checks, CLI byte tests,
+and focused API and Chromium byte/download regressions passed locally. The new
+API and browser regressions are included in CI.
 
 ### 2. Correct the remaining reflected-XSS HTML contexts
 

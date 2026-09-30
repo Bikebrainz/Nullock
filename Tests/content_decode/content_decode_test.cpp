@@ -62,6 +62,20 @@ int main() {
     chk("deflate(raw) round-trips",  decodeContentEncoding("deflate", deflateWith(plain, -15)) == plain);
 
     // No-ops -> empty (caller falls back to the raw body).
+    for (int bits : {15 + 16, 15, -15}) {
+        bool decoded = false;
+        const auto body = decodeContentEncoding(bits == 31 ? "gzip" : "deflate",
+            deflateWith({}, bits), 1024, &decoded);
+        chk("compressed empty body is available", body.isEmpty() && decoded);
+    }
+    {
+        bool decoded = true;
+        decodeContentEncoding("gzip", "garbage", 1024, &decoded);
+        chk("invalid compressed body is unavailable", !decoded);
+        decoded = true;
+        decodeContentEncoding("br", plain, 1024, &decoded);
+        chk("unsupported encoding clears availability", !decoded);
+    }
     chk("identity -> empty",        decodeContentEncoding("identity", plain).isEmpty());
     chk("empty encoding -> empty",  decodeContentEncoding("",         plain).isEmpty());
     chk("br unsupported -> empty",  decodeContentEncoding("br",       plain).isEmpty());

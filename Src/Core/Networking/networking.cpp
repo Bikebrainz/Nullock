@@ -397,8 +397,8 @@ HttpClient::SendResult HttpClient::send(const QString &host,
     // proxy path (Src/BackEnd/Proxy/proxy_server.cpp:917-919). Never touches
     // result.parsed.body or result.rawResponse, the exact wire bytes.
     const QString ce = NetworkingLogic::findHeader(result.parsed.headers, "Content-Encoding");
-    const QByteArray decoded = Nullock::Proxy::decodeContentEncoding(ce, result.parsed.body);
-    if (!decoded.isEmpty()) result.parsed.decodedBody = decoded;
+    result.parsed.decodedBody = Nullock::Proxy::decodeContentEncoding(
+        ce, result.parsed.body, 128LL * 1024 * 1024, &result.parsed.contentDecoded);
 
     socket->disconnectFromHost();
     result.ok = true;

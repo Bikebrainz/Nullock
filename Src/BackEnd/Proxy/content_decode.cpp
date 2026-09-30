@@ -13,7 +13,8 @@ namespace {
 // or an EMPTY QByteArray on a hard error or if the output would exceed maxOut.
 // A truncated stream still returns whatever decompressed cleanly (useful for
 // inspection) rather than nothing.
-QByteArray inflateWith(const QByteArray &in, int windowBits, qint64 maxOut) {
+QByteArray inflateWith(const QByteArray &in, int windowBits, qint64 maxOut, bool &decoded) {
+    decoded = false;
     if (in.isEmpty()) return {};
     z_stream zs;
     std::memset(&zs, 0, sizeof(zs));
@@ -50,24 +51,31 @@ QByteArray inflateWith(const QByteArray &in, int windowBits, qint64 maxOut) {
     } while (rc != Z_STREAM_END && zs.avail_out == 0);
 
     inflateEnd(&zs);
+    decoded = rc == Z_STREAM_END || !out.isEmpty();
     return out;
 }
 
 } // namespace
 
-QByteArray decodeContentEncoding(const QString &encoding, const QByteArray &body, qint64 maxOut) {
+QByteArray decodeContentEncoding(const QString &encoding, const QByteArray &body, qint64 maxOut, bool *decoded) {
+    bool available = false;
+    if (decoded) *decoded = false;
     const QString e = encoding.trimmed().toLower();
     if (e.isEmpty() || e == QLatin1String("identity")) return {};
 
-    if (e == QLatin1String("gzip") || e == QLatin1String("x-gzip"))
-        return inflateWith(body, 15 + 16, maxOut);
+    if (e == QLatin1String("gzip") || e == QLatin1String("x-gzip")) {
+        const auto out = inflateWith(body, 15 + 16, maxOut, available);
+        if (decoded) *decoded = available;
+        return out;
+    }
 
     if (e == QLatin1String("deflate")) {
         // RFC 7230 says "deflate" is zlib-wrapped, but plenty of servers send
         // RAW DEFLATE. Try the zlib wrapper first, fall back to raw.
-        const QByteArray z = inflateWith(body, 15, maxOut);
-        if (!z.isEmpty()) return z;
-        return inflateWith(body, -15, maxOut);
+        QByteArray out = inflateWith(body, 15, maxOut, available);
+        if (!available) out = inflateWith(body, -15, maxOut, available);
+        if (decoded) *decoded = available;
+        return out;
     }
 
     // br (brotli) / zstd and any stacked/unknown coding: not decodable here.

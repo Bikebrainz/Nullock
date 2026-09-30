@@ -2966,9 +2966,10 @@ function prettyPrintMarkup(text) {
 // pretty-print JSON/XML/HTML or just the body, 'hex' = canonical hex dump.
 function renderView(raw, view) {
   if (!raw || view === "raw") return raw || "";
-  const splitIdx = raw.indexOf("\n\n");
+  const separator = /\r?\n\r?\n/.exec(raw);
+  const splitIdx = separator ? separator.index : -1;
   const headers = splitIdx >= 0 ? raw.slice(0, splitIdx) : raw;
-  const body    = splitIdx >= 0 ? raw.slice(splitIdx + 2) : "";
+  const body    = splitIdx >= 0 ? raw.slice(splitIdx + separator[0].length) : "";
 
   if (view === "headers") return headers;
   if (view === "body")    return body || "(no body)";
@@ -2991,14 +2992,15 @@ function renderView(raw, view) {
 function hexDumpBytes(bytes) {
   if (!bytes || !bytes.length) return "";
   const lines = [];
-  for (let i = 0; i < bytes.length; i += 16) {
+  const limit = Math.min(bytes.length, 64 * 1024);
+  for (let i = 0; i < limit; i += 16) {
     const chunk = bytes.slice(i, i + 16);
     const offset = i.toString(16).padStart(8, "0");
     const hex = Array.from(chunk).map(b => b.toString(16).padStart(2, "0")).join(" ").padEnd(48, " ");
     const ascii = Array.from(chunk).map(b => (b >= 0x20 && b < 0x7f) ? String.fromCharCode(b) : ".").join("");
     lines.push(`${offset}  ${hex}  ${ascii}`);
-    if (i > 64 * 1024) { lines.push("... [truncated at 64 KiB]"); break; }
   }
+  if (bytes.length > limit) lines.push("... [truncated at 64 KiB]");
   return lines.join("\n");
 }
 function toHexDump(s) {
